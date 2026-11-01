@@ -1986,7 +1986,7 @@ async def bili_recommend(ps: int = 20) -> str:
     获取「首页推荐流」的视频（按当前登录账号的画像）
 
     Args:
-        ps: 返回几条，默认 20，最多 40
+        ps: 返回几条，默认 20，最多 60（首页单次只回 30 条，超过 30 会拉两次合并）
 
     Returns:
         JSON 格式的视频列表，字段与 bili_search 对齐（bvid / title / author / play / danmaku / duration…）
@@ -2002,40 +2002,63 @@ async def bili_recommend(ps: int = 20) -> str:
     except Exception:
         cred = None
 
-    try:
-        data = await homepage.get_videos(credential=cred)
-    except Exception as e:  # noqa: BLE001 - 统一收成 ok:false，别把原始异常甩给模型
-        return json.dumps({"ok": False, "error": f"取推荐流失败：{e}"}, ensure_ascii=False)
-
-    items = []
-    if isinstance(data, dict):
-        items = data.get("item") or data.get("data") or []
-    elif isinstance(data, list):
-        items = data
-
+    want = max(1, min(int(ps or 20), 60))
     videos = []
-    for it in items[: max(1, min(int(ps), 40))]:
-        if not isinstance(it, dict):
+    seen = set()
+    last_error = None
+
+    # ⭐ 2026-11-01 实测：homepage.get_videos 单次固定回 30 条，且连续两次 0 重叠。
+    #    要 50 条就拉两次（最多三次）并按 bvid 去重；ps<=30 的行为与以前一致。
+    for attempt in range(3 if want > 30 else 1):
+        try:
+            data = await homepage.get_videos(credential=cred)
+        except Exception as e:  # noqa: BLE001 - 统一收成 ok:false，别把原始异常甩给模型
+            last_error = e
+            if videos:
+                break
             continue
-        # 只留视频（推荐流里会混进直播 / 番剧 / 广告卡片）
-        if it.get("goto") and it.get("goto") != "av":
-            continue
-        if not it.get("bvid"):
-            continue
-        owner = it.get("owner") or {}
-        stat = it.get("stat") or {}
-        dur = it.get("duration")
-        videos.append({
-            "bvid": it.get("bvid", ""),
-            "title": str(it.get("title", "")).strip(),
-            "author": owner.get("name", ""),
-            "play": stat.get("view", 0),
-            "danmaku": stat.get("danmaku", 0),
-            "like": stat.get("like", 0),
-            "duration": f"{int(dur) // 60}:{int(dur) % 60:02d}" if isinstance(dur, (int, float)) else str(dur or ""),
-            "pubdate": it.get("pubdate", 0),
-            "reason": (it.get("rcmd_reason") or {}).get("content", "") if isinstance(it.get("rcmd_reason"), dict) else "",
-        })
+
+        items = []
+        if isinstance(data, dict):
+            items = data.get("item") or data.get("data") or []
+        elif isinstance(data, list):
+            items = data
+
+        for it in items:
+            if len(videos) >= want:
+                break
+            if not isinstance(it, dict):
+                continue
+            # 只留视频（推荐流里会混进直播 / 番剧 / 广告卡片）
+            if it.get("goto") and it.get("goto") != "av":
+                continue
+            bvid = it.get("bvid")
+            if not bvid or bvid in seen:
+                continue
+            seen.add(bvid)
+            owner = it.get("owner") or {}
+            stat = it.get("stat") or {}
+            dur = it.get("duration")
+            videos.append({
+                "bvid": bvid,
+                "title": str(it.get("title", "")).strip(),
+                "author": owner.get("name", ""),
+                "play": stat.get("view", 0),
+                "danmaku": stat.get("danmaku", 0),
+                "like": stat.get("like", 0),
+                "duration": f"{int(dur) // 60}:{int(dur) % 60:02d}" if isinstance(dur, (int, float)) else str(dur or ""),
+                "pubdate": it.get("pubdate", 0),
+                "reason": (it.get("rcmd_reason") or {}).get("content", "") if isinstance(it.get("rcmd_reason"), dict) else "",
+            })
+
+        if len(videos) >= want:
+            break
+        if attempt < 2:
+            await asyncio.sleep(1.0)
+
+    if not videos:
+        detail = f"：{last_error}" if last_error is not None else ""
+        return json.dumps({"ok": False, "error": f"取推荐流失败{detail}"}, ensure_ascii=False)
 
     return json.dumps({
         "ok": True,

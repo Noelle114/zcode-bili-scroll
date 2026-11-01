@@ -24,6 +24,17 @@ export function resolveZcode(config, env = process.env) {
   return 'zcode'
 }
 
+/** 从 stream 事件里找 provider 汇总的 usage（每轮一条，含 modelRequestCount） */
+function findProviderUsage(value) {
+  if (!value || typeof value !== 'object') return null
+  if (value.usage && typeof value.usage === 'object' && value.usage.source === 'provider') return value.usage
+  for (const child of Object.values(value)) {
+    const hit = findProviderUsage(child)
+    if (hit) return hit
+  }
+  return null
+}
+
 /**
  * 跑一轮：spawn `zcode --prompt`，解析 stream-json，按退出码/超时收尾。
  * 收尾的「数条数 / 补齐报告 / 复核 / 收藏」在 postrun 里，本函数只负责运行。
@@ -90,6 +101,7 @@ export async function runRound(paths = createPaths(), { why = 'manual', dryRun =
     let outputTail = ''
     let stderrTail = ''
     let authError = false
+    let usage = null
     const consume = (chunk, isErr = false) => {
       const text = String(chunk)
       stream.write(text)
@@ -104,6 +116,16 @@ export async function runRound(paths = createPaths(), { why = 'manual', dryRun =
           // 只在结构化错误里认鉴权失败；不要扫全部输出（`seq`/UUID 里的 1113 会误报）
           const err = event?.payload?.error || event?.error
           if (err && isAuthError(JSON.stringify(err))) authError = true
+          const u = findProviderUsage(event)
+          if (u) {
+            usage = {
+              inputTokens: Number(u.inputTokens) || 0,
+              outputTokens: Number(u.outputTokens) || 0,
+              totalTokens: Number(u.totalTokens) || 0,
+              cacheReadTokens: Number(u.cacheReadTokens) || 0,
+              modelRequestCount: Number(u.modelRequestCount) || 0,
+            }
+          }
         } catch { /* 非 JSON 行保留在 stream.jsonl 里 */ }
       }
     }
@@ -147,6 +169,7 @@ export async function runRound(paths = createPaths(), { why = 'manual', dryRun =
       provider: `${provider.providerId}/${provider.modelId}`,
       durationMs,
       stream: streamFile,
+      usage,
     }
     if (authError) {
       logger.error('这一轮疑似凭据问题（1113/鉴权失败）：请重新同步桌面端 credentials.json')
@@ -157,7 +180,7 @@ export async function runRound(paths = createPaths(), { why = 'manual', dryRun =
       result.error = `zcode 退出码 ${code}`
     }
     writeJson(join(runDir, 'result.json'), result)
-    logger.info(`刷B站结束（${why}，code=${code}${timedOut ? '，超时' : ''}，${Math.round(durationMs / 1000)}s）`)
+    logger.info(`刷B站结束（${why}，code=${code}${timedOut ? '，超时' : ''}，${Math.round(durationMs / 1000)}s${usage ? `，tokens=${usage.totalTokens}` : ''}）`)
     if (logger.rotate) logger.rotate()
     return result
   } catch (error) {

@@ -7,21 +7,18 @@
 
 ---
 
-## 0. 一句话状态（2026-11-01 17:36 CST 更新）
+## 0. 一句话状态（2026-11-01 17:51 CST 更新）
 
 - 方案已定稿，并已合入 spike 实测发现：[zcode-port-plan.md](zcode-port-plan.md)。
-- `zcode/` 子包已完成核心骨架、Python MCP 工具代理、`bili_run` / `admin_*`；**39 个单测**、`zcode plugins validate` 通过。
-- 已提交：`e447a23`（MVP 骨架）、`7182203`（MCP structuredContent 与 1113 误报修复）、`18f98ff`（私信投递记录）、`2c75e25`（systemd 调度与通知窗口）。
-- **真实一轮（只写报告）已跑通**（17:02–17:05）：挑 `BV1JPx16tEWG`，日报 `out/2026-11-01.md`，`seen.md` 4 行，`digest/2026-11.md` 已写；未发评论/私信；187 秒。
-- **真实私信测试已跑通**（17:10–17:13）：手动轮挑 `BV1Rbxg6WER5`；第一次 444 字被 B 站以 `21007 消息过长` 拒绝，模型按章程精简到 338 字后重发成功，回执 `msg_key` 已记录，`dm-deliveries.jsonl` 已记录；本轮 `result.json` 为 `ok:true / authError:false`；未发任何公开评论。
-- **调度与通知已实现**（39 个单测）：`bin/daemon.mjs` 每 60s tick，`collectTimes=12:30/20:30`，`peakValley=true`；`PreToolUse` 对 `bili_send_message` 加通知窗口（4h / 静默 23:00–08:00 / 每日最多 4 条 / 只发未通知过的 BV）。
-- **systemd 已安装并运行**（17:35:11 CST，`enabled` + `active`，PID 55346）：`zcode/deploy/bili-duty.service`；日志为 `daemon start … collectTimes=12:30,20:30` + `scheduler: 不跑（未到 20:30）`。
-- 今天已挑 2 条、`perDay=2` ⇒ 今天 20:30 不会再跑；下一次自动跑是明天 12:30。今天配额已满，所以不会因为装服务而立刻产生新 token 消耗。
-- 修了两个真 bug：
-  1. **ZCode 要求声明了 outputSchema 的 MCP 工具返回 structuredContent**，而 Python MCP 返回纯文本 ⇒ 在 `bin/mcp-server.mjs` 代理层去掉 `outputSchema`，并在结果里补 `structuredContent`；
-  2. **`isAuthError` 把 stream 里的 `seq:1113` 当成鉴权失败** ⇒ 只检查结构化错误事件，并把正则收紧到 `code/status/error/message` 上下文。
-- 服务器当前状态：插件以 **inline** 方式挂在 `~/.zcode/cli/config.json` 的 `plugins.dirs`（原配置备份在 `/home/bili/bili-duty/runs/zcode-cli-config.bak-*`）；测试配置为 `perDay=2 / dmMode=only / dmUid=<MAIN_UID> / autoComment=false / dmWatch=false`。`dmUid` 的真实值只在服务器配置里，不写进公开仓库。
-- 下一步：login/setup 迁移；复核/收藏/笔记/判重滚动；72h soak。
+- `zcode/` 子包已完成核心骨架、Python MCP 工具代理、`bili_run` / `admin_*`；**41 个单测**、`zcode plugins validate` 通过。
+- 已提交：`e447a23`（MVP 骨架）、`7182203`（MCP structuredContent 与 1113 误报修复）、`18f98ff`（私信投递记录）、`2c75e25`（systemd 调度与通知窗口）、`68dc89e`（systemd 上线记录）。
+- **真实一轮（只写报告）已跑通**（17:02–17:05）；**真实私信测试已跑通**（17:10–17:13，444 字被拒后 338 字成功）。
+- **systemd 已安装并运行**（17:35:11 CST，`enabled` + `active`，PID 55346）。
+- **72 小时试点已启动**：`collectTimes=08:30,12:30,18:30,22:30`、`perDay=4`、`fetchPerRound=5`、推荐流 `ps=50`；首轮手动测试于 17:51 启动。目标：观察 token 和 B 站风控，再决定是否扩到 12 轮。
+- **`bili_recommend(ps=50)`**：首页接口单次只回 30 条，连续两次 0 重叠 ⇒ 工具内部拉两次合并（ps<=30 时仍只拉一次）。runner 已把 provider 汇总的 usage 写进 `result.json`，可用 `bili-duty usage --days=3` 汇总。
+- 修了两个真 bug：MCP structuredContent 协议要求；`isAuthError` 把 stream 的 `seq:1113` 当鉴权失败。
+- 服务器当前状态：插件以 **inline** 方式挂在 `~/.zcode/cli/config.json` 的 `plugins.dirs`；`dmMode=only`、`dmUid=<MAIN_UID>`、`autoComment=false`、`dmWatch=false`。真实 UID 只在服务器配置里。
+- 下一步：72h 试点观察（每天看 `usage` / journal / 报告）；之后决定扩 12 轮；login/setup 迁移、复核/收藏/笔记/判重滚动。
 
 ---
 
@@ -145,6 +142,7 @@ ssh -i ~/.ssh/<your-key> bili@<ECS_PUBLIC_IP>
 6. **build / 部署包**：`build.mjs`、`deploy/bili-duty.service`、`DEPLOY-UBUNTU.md`。
 7. **上线前**：72h 低频 soak、S7 真实性能、S8 章程质量。
 8. **私信长度**：实测 444 字会被 `21007` 拒；在 prompt/章程里把目标收紧到 ~350 字，减少一次失败重试。
+9. **72h 试点（进行中）**：4 轮/天（08:30/12:30/18:30/22:30）、`fetchPerRound=5`、`perDay=4`、推荐流 50 条；看 `usage`、journal、报告质量与 B 站风控，再决定是否扩 12 轮。
 
 ---
 
@@ -156,6 +154,8 @@ ssh -i ~/.ssh/<your-key> bili@<ECS_PUBLIC_IP>
 - **`isAuthError` 不要匹配裸 `401` / 裸 `1113`**：事件 UUID、`seq` 里都可能含这些数字，会误报；只认结构化错误，且正则要带 `code/status/error/message` 上下文。
 - **私信长度实测**：444 字被 B 站以 `21007 消息过长` 拒绝，338 字成功。目标控制在 ~350 字以内，别按 500 字顶格写。
 - **`BILI_DUTY_RUN_DAY`**：Python MCP 只有看到这个日期（`YYYY-MM-DD`）才会把私信里的 BV 写进 `dm-deliveries.jsonl`；runner 现在会自动设，手工跑时也要 export。
+- **推荐流 50 条**：`homepage.get_videos` 单次固定回 30 条，连续两次 0 重叠；`bili_recommend(ps=50)` 内部拉两次合并去重，`ps<=30` 仍只拉一次。
+- **token 统计**：runner 从 stream 的 provider 汇总事件取 usage，写进 `runs/<runId>/result.json`；`bili-duty usage --days=3` 汇总最近 N 天（旧 run 没有 usage，会显示 `usage:null`）。
 - **通知窗口**：`hooks/pre-tool-use.mjs` 对 `bili_send_message` 按 `notifyEveryHours`（默认 4h）/ `quietHours`（默认 23:00–08:00）/ `notifyMaxPerDay`（默认 4）/ `notifyOnlyWhenNew` 收口；`dm-deliveries.jsonl` 的 mtime 就是「上次通知时间」。
 - **自动采集开关**：`peakValley=true` 时 daemon 才按 `collectTimes`（默认 12:30 / 20:30）跑；错过时点 60 分钟内会补跑，同一时点用 `state.windows[day@HH:MM]` 去重。
 - **`bili_run` 是派生进程**：MCP 调用立刻返回 `{started,pid}`；真正的轮次在后台跑，报告/日志在 `out/`、`duty.log`、`runs/`。
@@ -195,6 +195,7 @@ journalctl -u bili-duty -n 30 --no-pager
 - `systemctl status bili-duty --no-pager`：进程是否 active；
 - `journalctl -u bili-duty -n 50 --no-pager`：调度、运行、错误；
 - `out/<日期>.md`、`seen.md`、`dm-deliveries.jsonl`：日报、判重、私信回执；
+- `BILI_DUTY_HOME=/home/bili/bili-duty node bin/bili-duty.mjs usage --days=3`：token 与请求数汇总（试点期间每天看）；
 - 日志出现 `1113` / `Insufficient balance` / `HTTP 401` ⇒ 重新同步桌面端 `~/.zcode/v2/credentials.json`。
 
 ---

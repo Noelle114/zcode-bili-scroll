@@ -40,7 +40,7 @@ export function buildPrompt(paths, config, { why = 'window', now = new Date() } 
   if (kws.length) {
     lines.push(`- 关键词：${kws.join('、')}；排序 ${config.searchSort}；最多细看 ${config.fetchPerRound} 条`)
   } else {
-    lines.push('- 没填关键词：用 `bili_recommend` 刷首页推荐流，不要用固定关键词搜索')
+    lines.push('- 没填关键词：用 `bili_recommend(ps=50)` 刷首页推荐流（宿主会合并两次首页请求，最多 50 条），不要用固定关键词搜索')
   }
   if (excludes.length) lines.push(`- 排除词：${excludes.join('、')}（标题/UP/简介出现就整条跳过）`)
 
