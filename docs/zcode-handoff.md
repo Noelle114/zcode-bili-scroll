@@ -21,7 +21,7 @@
 - **自动额度已恢复**：今天 4 条都是手动轮 ⇒ `state.manualExtra=4`，`autoPicked=0 / left=4`；18:30 的自动轮可以正常跑。手动试点和 dry-run 的 run 目录已归档为 `runs/test-*`，`usage --days=1` 从 0 开始，72h 统计不会被测试污染。
 - **prompt 修正**：`prompt.mjs` 改用 `autoPickedToday` + `manualExtra`，手动轮不再占自动额度（41 单测通过）。
 - **18:30 自动轮失败并修复**：scheduler 把 `log` 函数传给 runner，而 runner 需要 logger 对象 ⇒ `TypeError: logger.error is not a function`，那一轮没有启动、也没有私信。已改成 scheduler 不再传 log + runner 兼容函数/对象，并重启 daemon（PID 63525）。
-- **20:07 自动轮验证成功**：临时时点 20:07 跑了一轮，4 条、342,398 token（9 请求）、私信成功 `msg_key=7703174508620221000`；今天 auto 4/4，22:30 会跳过。`collectTimes` 已恢复为 08:30/12:30/18:30/22:30。
+- **20:07 自动轮验证成功**：临时时点 20:07 跑了一轮，4 条、342,398 token（9 请求）、私信成功 `msg_key=7703174508620221000`，**主号已确认收到**；今天 auto 4/4，22:30 会跳过。`collectTimes` 已恢复为 08:30/12:30/18:30/22:30。
 - **4 轮结构修正**：新增 `maxPerRound=1`。20:07 那轮把 4 条额度一次用光，导致后面 3 轮会全部跳过；加上每轮上限后，明天 08:30/12:30/18:30/22:30 每轮最多挑 1 条，才能跑满 4 轮。明天第一轮的提示词已验证为「今天还剩 4 条，这一轮最多再挑 1 条」。
 - **`bili_recommend(ps=50)`**：首页接口单次只回 30 条，连续两次 0 重叠 ⇒ 工具内部拉两次合并（ps<=30 时仍只拉一次）。runner 已把 provider 汇总的 usage 写进 `result.json`，可用 `bili-duty usage --days=3` 汇总。
 - 修了两个真 bug：MCP structuredContent 协议要求；`isAuthError` 把 stream 的 `seq:1113` 当鉴权失败。
