@@ -1,7 +1,8 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { dayKey } from './time.mjs'
-import { countPickedToday, reportFileOf } from './quota.mjs'
+import { autoPickedToday, reportFileOf } from './quota.mjs'
+import { manualExtraToday } from './state.mjs'
 
 /**
  * 拼给值班轮的提示词。
@@ -16,7 +17,8 @@ export function buildPrompt(paths, config, { why = 'window', now = new Date() } 
 
   const tz = config.timeZone
   const today = dayKey(now, tz)
-  const already = countPickedToday(paths, config, now)
+  const already = autoPickedToday(paths, config, now)
+  const manualExtra = manualExtraToday(paths, { now, tz })
   const quota = Math.max(0, Number(config.perDay) || 0)
   const left = Math.max(0, quota - already)
   const report = reportFileOf(paths, now, tz)
@@ -30,7 +32,9 @@ export function buildPrompt(paths, config, { why = 'window', now = new Date() } 
   lines.push('', '===== 这一轮的运行约束（宿主追加，优先于章程里的默认值） =====')
   lines.push(`- 工作目录：${paths.workspace}`)
   lines.push(`- 日报：${report}（**每挑中一条，第一行写成 \`### BV号\`**；漏写会被当成没挑中）`)
-  lines.push(`- 今天已挑 ${already} 条；这一轮最多再挑 ${left} 条（全天总量 ${quota} 条）`)
+  lines.push(manualExtra > 0
+    ? `- 自动额度今天已挑 ${already} 条（手动轮另挑了 ${manualExtra} 条，不占自动额度）；这一轮最多再挑 ${left} 条（全天自动额度 ${quota} 条）`
+    : `- 今天已挑 ${already} 条；这一轮最多再挑 ${left} 条（全天总量 ${quota} 条）`)
   lines.push(`- 判重表：${paths.seen}`)
   lines.push(`- 本月归档：${join(paths.digestDir, `${today.slice(0, 7)}.md`)}`)
   lines.push(`- 报告形态：${config.reportLevel}`)

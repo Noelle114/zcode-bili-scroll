@@ -17,6 +17,9 @@
 - **72 小时试点已启动**：`collectTimes=08:30,12:30,18:30,22:30`、`perDay=4`、`fetchPerRound=5`、推荐流 `ps=50`；首轮手动测试于 17:51 启动。目标：观察 token 和 B 站风控，再决定是否扩到 12 轮。
 - **试点首轮结果**（17:51–17:55）：215 秒、**242,365 token**（7 次请求，cache 184,896）、挑 2 条（`BV1bpxe61EU6` / `BV186pc65E68`）、读 3 条字幕 + 2 次画面、无 B 站错误。私信被 4 小时窗口挡下（17:13 的测试私信）；测试账本已存档为 `dm-deliveries.test-20261101-1713.jsonl`，新账本从 0 开始。今天配额 4/4，18:30/22:30 跳过；第一次自动轮是明天 08:30。
 - **token 量级修正**：首轮 5 条细看 + 50 推荐约 **24.2 万 token** ⇒ 4 轮/天约 **100 万/天**，远低于之前 3–6M 的粗估；72h 后再按实际外推（12 轮 × 10 条的量级也会比 18–36M 低很多）。
+- **立即发送测试**（18:01）：宿主直接调 `bili_send_message` 发同一份私信（365 字，回执 `7703140961428716000`）成功；这条走宿主 MCP、不经过模型的 PreToolUse 闸门，也不写 `dm-deliveries`，所以不算通知窗口。
+- **自动额度已恢复**：今天 4 条都是手动轮 ⇒ `state.manualExtra=4`，`autoPicked=0 / left=4`；18:30 的自动轮可以正常跑。手动试点和 dry-run 的 run 目录已归档为 `runs/test-*`，`usage --days=1` 从 0 开始，72h 统计不会被测试污染。
+- **prompt 修正**：`prompt.mjs` 改用 `autoPickedToday` + `manualExtra`，手动轮不再占自动额度（41 单测通过）。
 - **`bili_recommend(ps=50)`**：首页接口单次只回 30 条，连续两次 0 重叠 ⇒ 工具内部拉两次合并（ps<=30 时仍只拉一次）。runner 已把 provider 汇总的 usage 写进 `result.json`，可用 `bili-duty usage --days=3` 汇总。
 - 修了两个真 bug：MCP structuredContent 协议要求；`isAuthError` 把 stream 的 `seq:1113` 当鉴权失败。
 - 服务器当前状态：插件以 **inline** 方式挂在 `~/.zcode/cli/config.json` 的 `plugins.dirs`；`dmMode=only`、`dmUid=<MAIN_UID>`、`autoComment=false`、`dmWatch=false`。真实 UID 只在服务器配置里。
@@ -158,6 +161,8 @@ ssh -i ~/.ssh/<your-key> bili@<ECS_PUBLIC_IP>
 - **`BILI_DUTY_RUN_DAY`**：Python MCP 只有看到这个日期（`YYYY-MM-DD`）才会把私信里的 BV 写进 `dm-deliveries.jsonl`；runner 现在会自动设，手工跑时也要 export。
 - **推荐流 50 条**：`homepage.get_videos` 单次固定回 30 条，连续两次 0 重叠；`bili_recommend(ps=50)` 内部拉两次合并去重，`ps<=30` 仍只拉一次。
 - **token 统计**：runner 从 stream 的 provider 汇总事件取 usage，写进 `runs/<runId>/result.json`；`bili-duty usage --days=3` 汇总最近 N 天（旧 run 没有 usage，会显示 `usage:null`）。
+- **手动轮额度**：`state.manualExtra` 记手动轮多挑的条数；`quota.autoPickedToday` 会减去它，所以手动轮不占自动额度。`prompt.mjs` 和 scheduler 都用这个口径。
+- **立即发送测试**：直接调宿主 MCP 的 `bili_send_message` 会绕过 PreToolUse，也不写 `dm-deliveries`；只用于验证发送链路，正式轮仍走通知窗口。
 - **通知窗口**：`hooks/pre-tool-use.mjs` 对 `bili_send_message` 按 `notifyEveryHours`（默认 4h）/ `quietHours`（默认 23:00–08:00）/ `notifyMaxPerDay`（默认 4）/ `notifyOnlyWhenNew` 收口；`dm-deliveries.jsonl` 的 mtime 就是「上次通知时间」。
 - **自动采集开关**：`peakValley=true` 时 daemon 才按 `collectTimes`（默认 12:30 / 20:30）跑；错过时点 60 分钟内会补跑，同一时点用 `state.windows[day@HH:MM]` 去重。
 - **`bili_run` 是派生进程**：MCP 调用立刻返回 `{started,pid}`；真正的轮次在后台跑，报告/日志在 `out/`、`duty.log`、`runs/`。
