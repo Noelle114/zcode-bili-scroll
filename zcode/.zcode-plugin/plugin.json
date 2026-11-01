@@ -1,0 +1,24 @@
+{
+  "name": "bili-duty",
+  "version": "0.1.0",
+  "description": "每天替你刷一轮 B 站：读字幕原文判断，写日报，值得的发私信",
+  "author": { "name": "dsh-bili-scroll contributors" },
+  "homepage": "https://github.com/c1overzz/dsh-bili-scroll",
+  "license": "MIT",
+  "keywords": ["bilibili", "duty", "zcode-plugin"],
+  "skills": "skills",
+  "commands": "commands",
+  "hooks": "hooks/hooks.json",
+  "mcpServers": ".mcp.json",
+  "userConfig": {
+    "perDay": { "title": "每天最多挑几条", "type": "number", "default": 5 },
+    "peakValley": { "title": "谷时自动刷", "type": "boolean", "default": false },
+    "mentionName": { "title": "要 @ 谁（B站昵称）", "type": "string", "default": "" },
+    "dmMode": { "title": "投递方式（off / only / both）", "type": "string", "default": "only" },
+    "keywordsText": { "title": "关键词（一行一个）", "type": "string", "default": "" },
+    "personaPrompt": { "title": "人设提示词", "type": "string", "default": "" },
+    "reportLevel": { "title": "日报形态（full / brief / off）", "type": "string", "default": "full" },
+    "autoComment": { "title": "自动评论并 @", "type": "boolean", "default": false },
+    "transcribe": { "title": "本地转写", "type": "boolean", "default": false }
+  }
+}

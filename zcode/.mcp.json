@@ -1,0 +1,25 @@
+{
+  "mcpServers": {
+    "bili-duty": {
+      "type": "stdio",
+      "command": "node",
+      "args": ["${ZCODE_PLUGIN_ROOT}/bin/mcp-server.mjs"],
+      "env": {
+        "BILI_DUTY_HOME": "${ZCODE_PLUGIN_DATA}",
+        "BILI_DUTY_PLUGIN_ROOT": "${ZCODE_PLUGIN_ROOT}",
+        "BILI_DUTY_ROLE": "mcp",
+        "BILI_DUTY_USER_PER_DAY": "${user_config.perDay}",
+        "BILI_DUTY_USER_PEAK_VALLEY": "${user_config.peakValley}",
+        "BILI_DUTY_USER_MENTION_NAME": "${user_config.mentionName}",
+        "BILI_DUTY_USER_DM_MODE": "${user_config.dmMode}",
+        "BILI_DUTY_USER_KEYWORDS_TEXT": "${user_config.keywordsText}",
+        "BILI_DUTY_USER_PERSONA": "${user_config.personaPrompt}",
+        "BILI_DUTY_USER_REPORT_LEVEL": "${user_config.reportLevel}",
+        "BILI_DUTY_USER_AUTO_COMMENT": "${user_config.autoComment}",
+        "BILI_DUTY_USER_TRANSCRIBE": "${user_config.transcribe}"
+      },
+      "enabled": true,
+      "timeoutMs": 60000
+    }
+  }
+}
