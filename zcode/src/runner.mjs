@@ -9,6 +9,7 @@ import { acquireLock, releaseLock } from './lock.mjs'
 import { buildPrompt } from './prompt.mjs'
 import { loadProvider } from './provider.mjs'
 import { checkCredentials, isAuthError } from './credentials.mjs'
+import { dayKey } from './time.mjs'
 import { writeJson } from './util.mjs'
 
 const DISALLOWED_TOOLS = [
@@ -70,6 +71,8 @@ export async function runRound(paths = createPaths(), { why = 'manual', dryRun =
       ...process.env,
       BILI_DUTY_HOME: paths.home,
       BILI_DUTY_RUN: '1',
+      // Python MCP 只有看到这个日期才会把私信里的 BV 记进 dm-deliveries.jsonl
+      BILI_DUTY_RUN_DAY: dayKey(new Date(), config.timeZone),
       ZCODE_PERSONAL_PROVIDER_CONFIG_FILE: config.providerConfigFile,
     }
 

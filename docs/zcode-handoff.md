@@ -7,17 +7,18 @@
 
 ---
 
-## 0. 一句话状态（2026-11-01 17:05 CST 更新）
+## 0. 一句话状态（2026-11-01 17:15 CST 更新）
 
 - 方案已定稿，并已合入 spike 实测发现：[zcode-port-plan.md](zcode-port-plan.md)。
 - `zcode/` 子包已完成核心骨架、Python MCP 工具代理、`bili_run` / `admin_*`；**22 个单测**、`zcode plugins validate` 通过。
-- 已在 `feat/zcode-mvp` 提交 `e447a23`；本地另有 **5 个未提交修复**：`zcode/.mcp.json`、`zcode/bin/mcp-server.mjs`、`zcode/src/credentials.mjs`、`zcode/src/runner.mjs`、`zcode/test/credentials.test.mjs`。
-- **真实一轮已跑通**（2026-11-01 17:02–17:05 CST）：只挑 1 条 `BV1JPx16tEWG`，日报 `out/2026-11-01.md`（2825 字节），`seen.md` 4 行，`digest/2026-11.md` 已写；**未发评论、未发私信**；耗时 187 秒。
+- 已提交：`e447a23`（MVP 骨架）+ `7182203`（MCP structuredContent 与 1113 误报修复）。本轮又补了 runner 自动设 `BILI_DUTY_RUN_DAY`（见 §7）。
+- **真实一轮（只写报告）已跑通**（17:02–17:05）：挑 `BV1JPx16tEWG`，日报 `out/2026-11-01.md`，`seen.md` 4 行，`digest/2026-11.md` 已写；未发评论/私信；187 秒。
+- **真实私信测试已跑通**（17:10–17:13）：手动轮挑 `BV1Rbxg6WER5`；第一次 444 字被 B 站以 `21007 消息过长` 拒绝，模型按章程精简到 338 字后重发成功，回执 `msg_key` 已记录，`dm-deliveries.jsonl` 已记录；本轮 `result.json` 为 `ok:true / authError:false`；未发任何公开评论。
 - 修了两个真 bug：
   1. **ZCode 要求声明了 outputSchema 的 MCP 工具返回 structuredContent**，而 Python MCP 返回纯文本 ⇒ 在 `bin/mcp-server.mjs` 代理层去掉 `outputSchema`，并在结果里补 `structuredContent`；
   2. **`isAuthError` 把 stream 里的 `seq:1113` 当成鉴权失败** ⇒ 只检查结构化错误事件，并把正则收紧到 `code/status/error/message` 上下文。
-- 服务器当前状态：插件以 **inline** 方式挂在 `~/.zcode/cli/config.json` 的 `plugins.dirs`（原配置备份在 `/home/bili/bili-duty/runs/zcode-cli-config.bak-*`）；测试配置为 `perDay=1 / dmMode=off / autoComment=false / dmWatch=false`，**接私信前要改回 `dmMode=only` 并填 `dmUid`**。
-- 下一步：systemd 调度 + 4h 通知；恢复投递配置；迁移 login/setup；复核/收藏/笔记/判重滚动。
+- 服务器当前状态：插件以 **inline** 方式挂在 `~/.zcode/cli/config.json` 的 `plugins.dirs`（原配置备份在 `/home/bili/bili-duty/runs/zcode-cli-config.bak-*`）；测试配置为 `perDay=2 / dmMode=only / dmUid=<MAIN_UID> / autoComment=false / dmWatch=false`。`dmUid` 的真实值只在服务器配置里，不写进公开仓库。
+- 下一步：systemd 调度 + 4h 通知；login/setup 迁移；复核/收藏/笔记/判重滚动；把私信正文长度按实测收紧到 ~350 字以内。
 
 ---
 
@@ -133,13 +134,14 @@ ssh -i ~/.ssh/<your-key> bili@<ECS_PUBLIC_IP>
 
 按优先级：
 
-1. **真实一轮**：在服务器上跑 `bili-duty run --manual`（先确认 `dmMode=only` 且 `dmUid` 是否填；没填就不会发私信），检查 `out/<日期>.md`、`seen.md`、`duty.log`。
+1. ~~**真实一轮**~~：已完成（17:02–17:05），报告/判重/归档正常。
 2. **systemd 调度**：daemon 内 tick + 4h 通知窗口；低频（2 次采集/天）。
-3. **私信发送**：把一轮挑中的结果发一条到主号；确认 500 字上限。
+3. ~~**私信发送**~~：已完成（17:10–17:13）；444 字被 `21007` 拒，338 字成功，回执已记录。
 4. **login / setup 迁移**：把 spike 的 `login_qr.py` 和 uv/venv 安装逻辑搬进 `src/login.mjs` / `src/install.mjs`。
 5. **复核 / 收藏 / 笔记 / 判重滚动**：参考 `lib/verify.mjs`、`lib/favops.py`、`index.js` 对应段。
 6. **build / 部署包**：`build.mjs`、`deploy/bili-duty.service`、`DEPLOY-UBUNTU.md`。
 7. **上线前**：72h 低频 soak、S7 真实性能、S8 章程质量。
+8. **私信长度**：实测 444 字会被 `21007` 拒；在 prompt/章程里把目标收紧到 ~350 字，减少一次失败重试。
 
 ---
 
@@ -148,7 +150,9 @@ ssh -i ~/.ssh/<your-key> bili@<ECS_PUBLIC_IP>
 - **服务器不能独立 OAuth**：`zcode login` 会 1113；必须同步桌面端 `~/.zcode/v2/credentials.json`；过期后要重新同步。
 - **provider 由 `providerOrder` 第一位决定**：`defaultModelSelection` 会被忽略；每次 spawn 用 `ZCODE_PERSONAL_PROVIDER_CONFIG_FILE` 指定文件。
 - **视觉必须 `openai-chat-completions` + 自定义 provider ID**：`anthropic-messages` 只给 OSS 链接、看不到像素。
-- **`isAuthError` 不要匹配裸 `401`**：事件 UUID 里可能含 `401`，会误报；只认 `1113` / `HTTP 401` / `status:401` 等高信号。
+- **`isAuthError` 不要匹配裸 `401` / 裸 `1113`**：事件 UUID、`seq` 里都可能含这些数字，会误报；只认结构化错误，且正则要带 `code/status/error/message` 上下文。
+- **私信长度实测**：444 字被 B 站以 `21007 消息过长` 拒绝，338 字成功。目标控制在 ~350 字以内，别按 500 字顶格写。
+- **`BILI_DUTY_RUN_DAY`**：Python MCP 只有看到这个日期（`YYYY-MM-DD`）才会把私信里的 BV 写进 `dm-deliveries.jsonl`；runner 现在会自动设，手工跑时也要 export。
 - **`bili_run` 是派生进程**：MCP 调用立刻返回 `{started,pid}`；真正的轮次在后台跑，报告/日志在 `out/`、`duty.log`、`runs/`。
 - **Python MCP 白名单**：`BILI_MCP_TOOLS` 名单外的工具不注册，模型连名字都看不到；评论/私信再由 PreToolUse 条件放行。
 - **`seen.md` 由宿主预建**：否则第一轮读判重表会报“不存在”。
