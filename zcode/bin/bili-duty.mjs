@@ -59,12 +59,17 @@ async function main() {
       const dryRun = args.includes('--dry-run')
       return print(await runRound(paths, { why: 'manual', dryRun, log }))
     }
+    case 'tick': {
+      const { tick } = await import('../src/scheduler.mjs')
+      const dryRun = args.includes('--dry-run')
+      return print(await tick(paths, config, { log: (msg) => log.info(msg), dryRun }))
+    }
     case 'login':
       return print({ ok: false, error: '登录脚本还在迁移：先用 /home/bili/spike-notes/login_qr.py' })
     case 'setup':
       return print({ ok: false, error: '安装脚本还在迁移：先复用 spike 的环境' })
     default:
-      throw new Error(`不认识的命令：${cmd}（可用：status/config/sync-credentials/provider/doctor/run）`)
+      throw new Error(`不认识的命令：${cmd}（可用：status/config/sync-credentials/provider/doctor/run/tick）`)
   }
 }
 

@@ -42,6 +42,7 @@ export function createPaths(opts = {}) {
     hfCache: join(home, '.hf-cache'),
     bin: join(home, 'bin'),
     qrPng: join(home, 'qrcode_login.png'),
+    dmDeliveries: join(home, 'dm-deliveries.jsonl'),
   }
 
   const isWin = process.platform === 'win32'

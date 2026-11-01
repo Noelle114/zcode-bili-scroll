@@ -45,9 +45,9 @@ export function buildPrompt(paths, config, { why = 'window', now = new Date() } 
   if (excludes.length) lines.push(`- 排除词：${excludes.join('、')}（标题/UP/简介出现就整条跳过）`)
 
   if (config.dmMode === 'only') {
-    lines.push(`- 投递：**只私信**（dmMode=only），一条公开评论都不发。用 \`bili_send_message\` 发给 UID ${config.dmUid || '(未填；未填就不要发)'}；一轮只发一条、正文不超过 500 字。`)
+    lines.push(`- 投递：**只私信**（dmMode=only），一条公开评论都不发。用 \`bili_send_message\` 发给 UID ${config.dmUid || '(未填；未填就不要发)'}；一轮只发一条、**正文控制在 350 字以内**（实测 444 字会被 21007 拒，338 字成功）。`)
   } else if (config.dmMode === 'both') {
-    lines.push(`- 投递：私信 + 评论。私信发给 UID ${config.dmUid || '(未填)'}；评论按设置 @ ${config.mentionName || '(未填)'}，每轮最多 ${config.commentPerRound} 条。`)
+    lines.push(`- 投递：私信 + 评论。私信发给 UID ${config.dmUid || '(未填)'}，**正文控制在 350 字以内**（444 字会被 21007 拒）；评论按设置 @ ${config.mentionName || '(未填)'}，每轮最多 ${config.commentPerRound} 条。`)
   } else {
     lines.push(`- 投递：只评论（dmMode=off），不发私信；评论按设置 @ ${config.mentionName || '(未填)'}。`)
   }

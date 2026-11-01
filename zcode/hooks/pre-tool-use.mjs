@@ -7,6 +7,7 @@
 import { createPaths } from '../src/paths.mjs'
 import { loadConfig } from '../src/config.mjs'
 import { decideTool, isDutyRun, shortToolName } from '../src/allowlist.mjs'
+import { shouldAllowDm } from '../src/notify.mjs'
 
 function emit(decision, reason) {
   process.stdout.write(JSON.stringify({
@@ -38,7 +39,22 @@ const name = shortToolName(input.tool_name)
 try {
   const config = loadConfig(paths)
   const { allow, reason } = decideTool({ toolName: name, isDuty: duty, config })
-  emit(allow ? 'allow' : 'deny', reason)
+  if (!allow) {
+    emit('deny', reason)
+    process.exit(0)
+  }
+  // 私信还要过通知窗口：4h 节流 / 静默时段 / 每日上限 / 只发新内容
+  if (duty && name === 'bili_send_message') {
+    const gate = shouldAllowDm(paths, config, {
+      now: new Date(),
+      text: input?.tool_input?.text || input?.toolInput?.text || '',
+    })
+    if (!gate.allow) {
+      emit('deny', `通知窗口：${gate.reason}`)
+      process.exit(0)
+    }
+  }
+  emit('allow', reason)
 } catch (error) {
   if (duty) emit('deny', `值班轮读取配置失败，拒绝工具调用：${String(error?.message ?? error)}`)
   else emit('allow', `配置读取失败，非值班轮放行：${String(error?.message ?? error)}`)

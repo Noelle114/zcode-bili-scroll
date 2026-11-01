@@ -8,7 +8,6 @@
   "keywords": ["bilibili", "duty", "zcode-plugin"],
   "skills": "skills",
   "commands": "commands",
-  "hooks": "hooks/hooks.json",
   "mcpServers": ".mcp.json",
   "userConfig": {
     "perDay": { "title": "每天最多挑几条", "type": "number", "default": 5 },

@@ -1,0 +1,31 @@
+[Unit]
+Description=Bili Duty daemon (ZCode)
+Documentation=https://github.com/c1overzz/dsh-bili-scroll
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=bili
+Group=bili
+WorkingDirectory=/home/bili/zcode-dev/zcode
+Environment=NODE_ENV=production
+Environment=HOME=/home/bili
+Environment=BILI_DUTY_HOME=/home/bili/bili-duty
+Environment=BILI_DUTY_TZ=Asia/Shanghai
+Environment=TZ=Asia/Shanghai
+Environment=BILI_DUTY_ZCODE_BIN=/usr/bin/zcode
+Environment=BILI_DUTY_ROLE=daemon
+Environment=PATH=/usr/local/bin:/usr/bin:/bin
+ExecStart=/usr/bin/node /home/bili/zcode-dev/zcode/bin/daemon.mjs
+Restart=always
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/home/bili/.zcode /home/bili/bili-duty
+LimitNOFILE=65535
+
+[Install]
+WantedBy=multi-user.target
