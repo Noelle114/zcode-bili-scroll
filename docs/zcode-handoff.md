@@ -15,6 +15,8 @@
 - **真实一轮（只写报告）已跑通**（17:02–17:05）；**真实私信测试已跑通**（17:10–17:13，444 字被拒后 338 字成功）。
 - **systemd 已安装并运行**（17:35:11 CST，`enabled` + `active`，PID 55346）。
 - **72 小时试点已启动**：`collectTimes=08:30,12:30,18:30,22:30`、`perDay=4`、`fetchPerRound=5`、推荐流 `ps=50`；首轮手动测试于 17:51 启动。目标：观察 token 和 B 站风控，再决定是否扩到 12 轮。
+- **试点首轮结果**（17:51–17:55）：215 秒、**242,365 token**（7 次请求，cache 184,896）、挑 2 条（`BV1bpxe61EU6` / `BV186pc65E68`）、读 3 条字幕 + 2 次画面、无 B 站错误。私信被 4 小时窗口挡下（17:13 的测试私信）；测试账本已存档为 `dm-deliveries.test-20261101-1713.jsonl`，新账本从 0 开始。今天配额 4/4，18:30/22:30 跳过；第一次自动轮是明天 08:30。
+- **token 量级修正**：首轮 5 条细看 + 50 推荐约 **24.2 万 token** ⇒ 4 轮/天约 **100 万/天**，远低于之前 3–6M 的粗估；72h 后再按实际外推（12 轮 × 10 条的量级也会比 18–36M 低很多）。
 - **`bili_recommend(ps=50)`**：首页接口单次只回 30 条，连续两次 0 重叠 ⇒ 工具内部拉两次合并（ps<=30 时仍只拉一次）。runner 已把 provider 汇总的 usage 写进 `result.json`，可用 `bili-duty usage --days=3` 汇总。
 - 修了两个真 bug：MCP structuredContent 协议要求；`isAuthError` 把 stream 的 `seq:1113` 当鉴权失败。
 - 服务器当前状态：插件以 **inline** 方式挂在 `~/.zcode/cli/config.json` 的 `plugins.dirs`；`dmMode=only`、`dmUid=<MAIN_UID>`、`autoComment=false`、`dmWatch=false`。真实 UID 只在服务器配置里。
@@ -142,7 +144,7 @@ ssh -i ~/.ssh/<your-key> bili@<ECS_PUBLIC_IP>
 6. **build / 部署包**：`build.mjs`、`deploy/bili-duty.service`、`DEPLOY-UBUNTU.md`。
 7. **上线前**：72h 低频 soak、S7 真实性能、S8 章程质量。
 8. **私信长度**：实测 444 字会被 `21007` 拒；在 prompt/章程里把目标收紧到 ~350 字，减少一次失败重试。
-9. **72h 试点（进行中）**：4 轮/天（08:30/12:30/18:30/22:30）、`fetchPerRound=5`、`perDay=4`、推荐流 50 条；看 `usage`、journal、报告质量与 B 站风控，再决定是否扩 12 轮。
+9. **72h 试点（进行中）**：4 轮/天（08:30/12:30/18:30/22:30）、`fetchPerRound=5`、`perDay=4`、推荐流 50 条；首轮 242k token/5 reads。今天配额 4/4，第一次自动轮是明天 08:30；看 `usage`、journal、报告质量与 B 站风控，再决定是否扩 12 轮。
 
 ---
 
