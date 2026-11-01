@@ -46,6 +46,20 @@ test('falls back to workspace/AGENTS.md', () => {
   } finally { rmSync(home, { recursive: true, force: true }) }
 })
 
+test('substitutes {owner} with mentionName or 你', () => {
+  const { home, paths } = setup()
+  try {
+    const named = buildPrompt(paths, configOf(paths, {
+      personaPrompt: '把结果发给 {owner}。',
+      mentionName: '阿鱼',
+    }), { why: 'schedule' })
+    assert.match(named, /发给 阿鱼/)
+    const unnamed = buildPrompt(paths, configOf(paths, { personaPrompt: '把结果发给 {owner}。' }), { why: 'schedule' })
+    assert.match(unnamed, /发给\s*你/)
+    assert.doesNotMatch(unnamed, /发给主人/)
+  } finally { rmSync(home, { recursive: true, force: true }) }
+})
+
 test('prompt mentions transcribe and comment settings', () => {
   const { home, paths } = setup()
   try {

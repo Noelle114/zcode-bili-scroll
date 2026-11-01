@@ -50,9 +50,13 @@ export function buildPrompt(paths, config, { why = 'window', now = new Date() } 
 
   const lines = ['你是这个账号的 B站 助手。严格按下面的值班章程执行。', '']
   if (persona) {
+    // {owner} 用昵称；没填就称呼“你”。不用“主人”，章程明确禁止私信出现这个词
+    const owner = String(config.mentionName || '').trim() || '你'
+    persona = persona.split('{owner}').join(owner)
     lines.push(`===== 使用者的人设${personaFrom ? `（读自 ${personaFrom}）` : '提示词'}（**按这个来**）=====`)
     lines.push(persona)
     lines.push('===== 人设结束 =====', '')
+    lines.push('（人设只影响语气；与下面的运行约束 / 章程红线冲突时，以运行约束和红线为准。）', '')
   } else {
     lines.push('这一轮没有额外人设，按中性说话；别自己编一套设定。', '')
   }
