@@ -34,13 +34,14 @@ export function syncCredentials(src, dest = defaultCredentialsFile()) {
   return checkCredentials(dest)
 }
 
-/** 1113 是 BigModel/Z.AI 的「余额/资源包不足」；看到它先怀疑凭据，不要当成模型问题 */
+/** 1113 是 BigModel/Z.AI 的「余额/资源包不足」；看到它先怀疑凭据，不要当成模型问题。
+ *  ⚠️ 不能匹配裸 1113：流事件里的 `seq` / UUID 也可能含 1113（2026-11-01 真实一轮误报过）。 */
 export function isAuthError(text) {
   const s = String(text || '')
-  return /1113|Insufficient balance|no resource package|invalid[\s_-]?token|token expired|HTTP\s+401|["']?(?:status|code)["']?\s*[:=]\s*401|Unauthorized/i.test(s)
+  return /(?:code|status|error|message|错误码|错误)["'\s:=]{0,40}?\b1113\b|\b1113\b[^\n]{0,80}?(?:Insufficient|balance|resource package)|Insufficient balance|no resource package|invalid[\s_-]?token|token (?:has )?expired|HTTP\s+401|["']?(?:status|code)["']?\s*[:=]\s*401|Unauthorized/i.test(s)
 }
 
 export function isQuotaError(text) {
   const s = String(text || '')
-  return /1113|Insufficient balance|no resource package|quota exceeded|rate[\s_-]?limit|HTTP\s+429|["']?(?:status|code)["']?\s*[:=]\s*429/i.test(s)
+  return /(?:code|status|error|message|错误码|错误)["'\s:=]{0,40}?\b(?:1113|429)\b|\b1113\b[^\n]{0,80}?(?:Insufficient|balance|resource package)|Insufficient balance|no resource package|quota exceeded|rate[\s_-]?limit|HTTP\s+429|["']?(?:status|code)["']?\s*[:=]\s*429/i.test(s)
 }

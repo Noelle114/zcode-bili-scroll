@@ -13,6 +13,17 @@ test('isAuthError does not match bare 401 inside UUID/event ids', () => {
   assert.equal(isAuthError(line), false)
 })
 
+test('isAuthError does not match 1113 in stream seq / event ids', () => {
+  assert.equal(isAuthError('{"seq":1113,"payload":{"delta":"ok"}}'), false)
+  assert.equal(isAuthError('{"eventId":"40685790-1113-44e3-834d-faccefbdd7b5"}'), false)
+  assert.equal(isAuthError('{"seq":1949,"payload":{"delta":"1113"}}'), false)
+})
+
+test('isAuthError still catches structured 1113', () => {
+  assert.equal(isAuthError('{"code":1113,"message":"Insufficient balance"}'), true)
+  assert.equal(isAuthError('{"error":{"code":1113,"message":"no resource package"}}'), true)
+})
+
 test('isQuotaError is also conservative', () => {
   assert.equal(isQuotaError('rate limit exceeded'), true)
   assert.equal(isQuotaError('{"status":429}'), true)

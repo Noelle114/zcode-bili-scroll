@@ -16,10 +16,21 @@ ensureHome(paths)
 const log = createLogger(paths)
 const py = new PythonMcp(paths, { log: (msg) => log.warn(msg) })
 
+/**
+ * ⚠️ ZCode 对「声明了 outputSchema 的 MCP 工具」要求返回 structuredContent；
+ * 而 Python MCP 的工具返回纯文本 ⇒ 在代理层去掉 outputSchema，
+ * 同时在结果里补 structuredContent（对象时），否则真实值班轮会被协议错误挡住。
+ */
+function sanitizePythonTool(tool) {
+  if (!tool || typeof tool !== 'object') return tool
+  const { outputSchema, output_schema, ...rest } = tool
+  return rest
+}
+
 let pythonTools = []
 let pythonError = ''
 try {
-  pythonTools = await py.listTools()
+  pythonTools = (await py.listTools()).map(sanitizePythonTool)
   log.info(`Python MCP 工具 ${pythonTools.length} 个`)
 } catch (error) {
   pythonError = String(error?.message ?? error)
@@ -61,7 +72,9 @@ async function callTool(name, args = {}) {
     for (const image of images) {
       content.push({ type: 'image', data: image.data, mimeType: image.mimeType })
     }
-    return { content, isError: false }
+    const result = { content, isError: false }
+    if (json && typeof json === 'object' && !Array.isArray(json)) result.structuredContent = json
+    return result
   } catch (error) {
     return textResult({ ok: false, tool: name, error: String(error?.message ?? error) }, true)
   }

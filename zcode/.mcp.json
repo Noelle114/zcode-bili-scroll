@@ -5,7 +5,6 @@
       "command": "node",
       "args": ["${ZCODE_PLUGIN_ROOT}/bin/mcp-server.mjs"],
       "env": {
-        "BILI_DUTY_HOME": "${ZCODE_PLUGIN_DATA}",
         "BILI_DUTY_PLUGIN_ROOT": "${ZCODE_PLUGIN_ROOT}",
         "BILI_DUTY_ROLE": "mcp",
         "BILI_DUTY_USER_PER_DAY": "${user_config.perDay}",

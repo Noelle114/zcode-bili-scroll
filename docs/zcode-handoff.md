@@ -7,12 +7,17 @@
 
 ---
 
-## 0. 一句话状态
+## 0. 一句话状态（2026-11-01 17:05 CST 更新）
 
 - 方案已定稿，并已合入 spike 实测发现：[zcode-port-plan.md](zcode-port-plan.md)。
-- `zcode/` 子包已完成核心骨架、Python MCP 工具代理、`bili_run` / `admin_*`；20 个单测、`zcode plugins validate`、服务器上的 dry-run 均通过。
-- **尚未提交**：`git status` 只有未跟踪的 `docs/` 和 `zcode/`；源码真相在本地 repo，不在服务器。
-- 下一步：先跑一轮真实值班（只写报告、不发评论/私信），再 systemd 调度 + 4h 通知，然后私信/复核/收藏/安装迁移。
+- `zcode/` 子包已完成核心骨架、Python MCP 工具代理、`bili_run` / `admin_*`；**22 个单测**、`zcode plugins validate` 通过。
+- 已在 `feat/zcode-mvp` 提交 `e447a23`；本地另有 **5 个未提交修复**：`zcode/.mcp.json`、`zcode/bin/mcp-server.mjs`、`zcode/src/credentials.mjs`、`zcode/src/runner.mjs`、`zcode/test/credentials.test.mjs`。
+- **真实一轮已跑通**（2026-11-01 17:02–17:05 CST）：只挑 1 条 `BV1JPx16tEWG`，日报 `out/2026-11-01.md`（2825 字节），`seen.md` 4 行，`digest/2026-11.md` 已写；**未发评论、未发私信**；耗时 187 秒。
+- 修了两个真 bug：
+  1. **ZCode 要求声明了 outputSchema 的 MCP 工具返回 structuredContent**，而 Python MCP 返回纯文本 ⇒ 在 `bin/mcp-server.mjs` 代理层去掉 `outputSchema`，并在结果里补 `structuredContent`；
+  2. **`isAuthError` 把 stream 里的 `seq:1113` 当成鉴权失败** ⇒ 只检查结构化错误事件，并把正则收紧到 `code/status/error/message` 上下文。
+- 服务器当前状态：插件以 **inline** 方式挂在 `~/.zcode/cli/config.json` 的 `plugins.dirs`（原配置备份在 `/home/bili/bili-duty/runs/zcode-cli-config.bak-*`）；测试配置为 `perDay=1 / dmMode=off / autoComment=false / dmWatch=false`，**接私信前要改回 `dmMode=only` 并填 `dmUid`**。
+- 下一步：systemd 调度 + 4h 通知；恢复投递配置；迁移 login/setup；复核/收藏/笔记/判重滚动。
 
 ---
 

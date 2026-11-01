@@ -85,25 +85,29 @@ export async function runRound(paths = createPaths(), { why = 'manual', dryRun =
 
     let sessionId = ''
     let outputTail = ''
+    let stderrTail = ''
     let authError = false
-    const consume = (chunk) => {
+    const consume = (chunk, isErr = false) => {
       const text = String(chunk)
       stream.write(text)
       outputTail = (outputTail + text).slice(-8000)
-      if (isAuthError(text)) authError = true
+      if (isErr) stderrTail = (stderrTail + text).slice(-8000)
       for (const line of text.split(/\r?\n/)) {
         if (!line.trim()) continue
         try {
           const event = JSON.parse(line)
           const sid = event?.sessionId || event?.session_id || event?.result?.sessionId
           if (sid && !sessionId) sessionId = String(sid)
+          // 只在结构化错误里认鉴权失败；不要扫全部输出（`seq`/UUID 里的 1113 会误报）
+          const err = event?.payload?.error || event?.error
+          if (err && isAuthError(JSON.stringify(err))) authError = true
         } catch { /* 非 JSON 行保留在 stream.jsonl 里 */ }
       }
     }
     child.stdout?.setEncoding('utf8')
     child.stderr?.setEncoding('utf8')
-    child.stdout?.on('data', consume)
-    child.stderr?.on('data', consume)
+    child.stdout?.on('data', (chunk) => consume(chunk, false))
+    child.stderr?.on('data', (chunk) => consume(chunk, true))
 
     const timeoutMs = Math.max(5, Number(config.runTimeoutMinutes) || 30) * 60_000
     let timedOut = false
@@ -125,6 +129,8 @@ export async function runRound(paths = createPaths(), { why = 'manual', dryRun =
     })
     clearTimeout(timer)
     stream.end()
+    // stderr 里出现真正的鉴权错误时也算（模型输出已排除，不会再把 seq/UUID 当错误）
+    if (!authError && isAuthError(stderrTail)) authError = true
 
     const durationMs = Date.now() - startedAt
     const result = {
