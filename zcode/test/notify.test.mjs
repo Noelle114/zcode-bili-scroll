@@ -6,7 +6,7 @@ import { join } from 'node:path'
 import { createPaths } from '../src/paths.mjs'
 import { DEFAULTS, normalize } from '../src/config.mjs'
 import { dayKey } from '../src/time.mjs'
-import { parseQuietHours, inQuietHours, shouldAllowDm } from '../src/notify.mjs'
+import { parseQuietHours, inQuietHours, shouldAllowDm, beginDmSend } from '../src/notify.mjs'
 
 const NOW = new Date('2026-11-01T12:00:00+08:00')
 const NEW_BV = 'BV1aaaaaaaaa'
@@ -18,6 +18,7 @@ function setup() {
   const config = normalize({
     ...DEFAULTS,
     dmMode: 'only',
+    dmUid: 123456,
     notifyEveryHours: 4,
     notifyMaxPerDay: 4,
     notifyOnlyWhenNew: true,
@@ -108,10 +109,80 @@ test('notifyOnlyWhenNew denies a message without a BV', () => {
   } finally { rmSync(home, { recursive: true, force: true }) }
 })
 
-test('dmMode=off is not treated as a round notification', () => {
+test('dmMode=off is never allowed to send', () => {
   const { home, paths, config } = setup()
   try {
     const r = shouldAllowDm(paths, { ...config, dmMode: 'off' }, { now: NOW, text: 'reply' })
+    assert.equal(r.allow, false)
+    assert.match(r.reason, /dmMode=off/)
+  } finally { rmSync(home, { recursive: true, force: true }) }
+})
+
+test('rejects a receiver other than dmUid', () => {
+  const { home, paths, config } = setup()
+  try {
+    const r = shouldAllowDm(paths, config, { now: NOW, text: NEW_BV, receiverUid: 999 })
+    assert.equal(r.allow, false)
+    assert.match(r.reason, /收件人/)
+  } finally { rmSync(home, { recursive: true, force: true }) }
+})
+
+test('allows a 4h-spaced round with the 5-minute grace', () => {
+  const { home, paths, config } = setup()
+  try {
+    writeDeliveries(paths, [{ day: dayKey(NOW, config.timeZone), bvids: [OLD_BV] }], new Date(NOW.getTime() - (3 * 3600_000 + 56 * 60_000)))
+    const r = shouldAllowDm(paths, config, { now: NOW, text: NEW_BV })
+    assert.equal(r.allow, true)
+  } finally { rmSync(home, { recursive: true, force: true }) }
+})
+
+test('beginDmSend serializes concurrent sends', () => {
+  const { home, paths } = setup()
+  try {
+    assert.equal(beginDmSend(paths, { now: NOW.getTime() }).allow, true)
+    assert.equal(beginDmSend(paths, { now: NOW.getTime() + 1000 }).allow, false)
+    assert.equal(beginDmSend(paths, { now: NOW.getTime() + 16_000 }).allow, true)
+  } finally { rmSync(home, { recursive: true, force: true }) }
+})
+
+test('daily cap counts a batch once, not once per message', () => {
+  const { home, paths, config } = setup()
+  try {
+    const day = dayKey(NOW, config.timeZone)
+    writeDeliveries(paths, [
+      { day, batch: 'run-x', bvids: [NEW_BV] },
+      { day, batch: 'run-x', bvids: [] },
+      { day, batch: 'run-x', bvids: [] },
+      { day, batch: 'run-x', bvids: [] },
+    ], new Date(NOW.getTime() - 5 * 3600_000))
+    const r = shouldAllowDm(paths, config, { now: NOW, text: 'BV1ddddddddd' })
+    assert.equal(r.allow, true)
+  } finally { rmSync(home, { recursive: true, force: true }) }
+})
+
+test('a continued batch skips the 4h window', () => {
+  const { home, paths, config } = setup()
+  try {
+    writeDeliveries(paths, [{ day: dayKey(NOW, config.timeZone), batch: 'run-x', bvids: [OLD_BV] }], new Date(NOW.getTime() - 3600_000))
+    const r = shouldAllowDm(paths, config, { now: NOW, text: `https://www.bilibili.com/video/${NEW_BV}`, continued: true })
+    assert.equal(r.allow, true)
+  } finally { rmSync(home, { recursive: true, force: true }) }
+})
+
+test('a continued batch still rejects an already delivered BV', () => {
+  const { home, paths, config } = setup()
+  try {
+    writeDeliveries(paths, [{ day: dayKey(NOW, config.timeZone), batch: 'run-x', bvids: [OLD_BV] }], new Date(NOW.getTime() - 3600_000))
+    const r = shouldAllowDm(paths, config, { now: NOW, text: OLD_BV, continued: true })
+    assert.equal(r.allow, false)
+    assert.match(r.reason, /已经通知过/)
+  } finally { rmSync(home, { recursive: true, force: true }) }
+})
+
+test('a batch summary without a BV is allowed', () => {
+  const { home, paths, config } = setup()
+  try {
+    const r = shouldAllowDm(paths, config, { now: NOW, text: '这一轮挑了 3 条，都是 AI 相关。', allowNoBv: true })
     assert.equal(r.allow, true)
   } finally { rmSync(home, { recursive: true, force: true }) }
 })

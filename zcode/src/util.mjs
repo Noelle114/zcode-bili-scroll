@@ -11,6 +11,30 @@ export function readJson(file, fallback) {
   }
 }
 
+/**
+ * 严格读配置：文件不存在返回 {exists:false}；存在但读不了/不是 JSON 对象则抛错。
+ * 配置和 state 不同 —— 静默回退 DEFAULTS 会让 daemon 按错误配置跑，甚至覆盖原配置。
+ */
+export function readJsonStrict(file) {
+  let text
+  try {
+    text = readFileSync(file, 'utf8')
+  } catch (error) {
+    if (error?.code === 'ENOENT') return { exists: false, value: null }
+    throw new Error(`读取 ${file} 失败：${error?.message ?? error}`)
+  }
+  let value
+  try {
+    value = JSON.parse(text)
+  } catch (error) {
+    throw new Error(`解析 ${file} 失败：${error?.message ?? error}`)
+  }
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error(`解析 ${file} 失败：顶层必须是 JSON 对象`)
+  }
+  return { exists: true, value }
+}
+
 /** 原子写：先写临时文件再 rename，避免半截 JSON */
 export function writeFileAtomic(file, data, mode = 0o600) {
   mkdirSync(dirname(file), { recursive: true, mode: 0o700 })

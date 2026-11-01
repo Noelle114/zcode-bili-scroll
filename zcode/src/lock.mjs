@@ -18,8 +18,8 @@ export function acquireLock(file, { why = '', ttlMs = 10 * 60_000, now = Date.no
   try {
     const lock = readJson(file, null)
     if (lock && Number(lock.pid) !== process.pid) {
-      const fresh = Number(lock.ts) > now - ttlMs
-      if (fresh && pidAlive(Number(lock.pid))) return { ok: false, lock }
+      // 只要持锁进程还活着就不抢；崩溃留下的死 pid 直接覆盖（不再用短 TTL 抢长轮次）
+      if (pidAlive(Number(lock.pid))) return { ok: false, lock }
     }
     writeJson(file, { pid: process.pid, ts: now, why })
     return { ok: true }

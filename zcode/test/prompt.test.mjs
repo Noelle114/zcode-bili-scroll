@@ -65,13 +65,59 @@ test('prompt mentions transcribe and comment settings', () => {
   try {
     const text = buildPrompt(paths, configOf(paths, {
       transcribe: true,
+      autoComment: true,
+      mentionName: '阿鱼',
       commentLength: 'short',
       replyToComments: true,
       replyPerRound: 2,
       commentPerRound: 2,
     }), { why: 'schedule' })
     assert.match(text, /本地转写/)
-    assert.match(text, /评论长度：短/)
+    assert.match(text, /短（≤15 字）/)
     assert.match(text, /回复评论：开着/)
+  } finally { rmSync(home, { recursive: true, force: true }) }
+})
+
+test('manual round is not capped by remaining auto quota', () => {
+  const { home, paths } = setup()
+  try {
+    const text = buildPrompt(paths, configOf(paths, { perDay: 0, maxPerRound: 1, dmUid: 123 }), { why: 'manual' })
+    assert.match(text, /手动触发：这一轮目标 1 条、最多挑 1 条/)
+    assert.doesNotMatch(text, /这一轮最多再挑 0 条/)
+  } finally { rmSync(home, { recursive: true, force: true }) }
+})
+
+test('prompt asks for a summary plus per-video DMs with a pilot target', () => {
+  const { home, paths } = setup()
+  try {
+    const text = buildPrompt(paths, configOf(paths, {
+      dmMode: 'only',
+      dmUid: 123,
+      perDay: 20,
+      maxPerRound: 5,
+      roundTarget: 3,
+      dmBatchMax: 5,
+    }), { why: 'schedule' })
+    assert.match(text, /这一轮目标 3 条、最多再挑 5 条/)
+    assert.match(text, /先发 1 条总结/)
+    assert.match(text, /最多 5 条视频消息/)
+    assert.match(text, /不要贴 BV 号或链接/)
+  } finally { rmSync(home, { recursive: true, force: true }) }
+})
+
+test('reportLevel=off removes the report path instruction', () => {
+  const { home, paths } = setup()
+  try {
+    const text = buildPrompt(paths, configOf(paths, { reportLevel: 'off', dmUid: 123 }), { why: 'schedule' })
+    assert.match(text, /不写日报文件/)
+    assert.doesNotMatch(text, /日报：.*每挑中一条/)
+  } finally { rmSync(home, { recursive: true, force: true }) }
+})
+
+test('ZCode host prompt tells the model how to record comment rpid', () => {
+  const { home, paths } = setup()
+  try {
+    const text = buildPrompt(paths, configOf(paths, { dmUid: 123, dmMode: 'off', autoComment: true, mentionName: 'me' }), { why: 'schedule' })
+    assert.match(text, /duty_comment_append\(bvid, rpid, root, text\)/)
   } finally { rmSync(home, { recursive: true, force: true }) }
 })

@@ -7,10 +7,13 @@
 
 ---
 
-## 0. 一句话状态（2026-11-01 17:51 CST 更新）
+## 0. 一句话状态（2026-11-01 21:25 CST 更新）
 
+- **复查的 1~7 条已修**（DSH 章程工具名、评论风格重试、MCP 启动自愈、DSH MCP 客户端、daemon 崩溃窗口、collectTimes 截断、凭据过期预检）；第 8 条 stderr 1113 风险本轮未动。只读全量审查的 15 条已处理 15 条（私信收件人/闸门、manualExtra、窗口回滚、严格配置、交互式 MCP 数据目录、锁、reportLevel 配额、stream 监听/跨块、hook 非 JSON、MCP 重建、转写路径、4h 宽限、凭证校验）。单测 **88/88** 通过；`zcode plugins validate` 通过；daemon 已重启到新代码（PID 102847）。
+- `userConfig` 现在也有桥接：daemon/hook 会读 `~/.zcode/cli/config.json` 的 `plugins.options`，显式设置过的字段优先于 `config.json`；交互式 MCP 的数据目录走 `dataDir` / `BILI_DUTY_CONFIG_HOME`。注意：若在 ZCode 设置页显式改过某字段，想再用 `bili-duty config set` 改同一字段，需要先在设置页把它清空/恢复默认。
 - 方案已定稿，并已合入 spike 实测发现：[zcode-port-plan.md](zcode-port-plan.md)。
-- `zcode/` 子包已完成核心骨架、Python MCP 工具代理、`bili_run` / `admin_*`；**41 个单测**、`zcode plugins validate` 通过。
+- **批量私信试点（2026-11-01 22:40 起）**：`perDay=20`、`maxPerRound=5`、`roundTarget=3`、`fetchPerRound=10`、`dmBatchMax=5`；一轮私信 = 1 条总结 + 最多 5 条视频消息，消息间 3 秒延时；2026-11-01 22:30 窗口已标记跳过，2026-11-02 08:30 开始按新配置跑。
+- `zcode/` 子包已完成核心骨架、Python MCP 工具代理、`bili_run` / `admin_*`；**88 个单测**、`zcode plugins validate` 通过。
 - 已提交：`e447a23`（MVP 骨架）、`7182203`（MCP structuredContent 与 1113 误报修复）、`18f98ff`（私信投递记录）、`2c75e25`（systemd 调度与通知窗口）、`68dc89e`（systemd 上线记录）。
 - **真实一轮（只写报告）已跑通**（17:02–17:05）；**真实私信测试已跑通**（17:10–17:13，444 字被拒后 338 字成功）。
 - **systemd 已安装并运行**（17:35:11 CST，`enabled` + `active`，PID 55346）。
@@ -39,7 +42,7 @@
 | 2 | [docs/zcode-port-plan.md](zcode-port-plan.md) | 主方案：架构、目录、模块边界、接口、任务、风险、部署。**读全文**；重点 §0 / §0.1 / §3 / §4 / §5 / §6.3.4 / §10–§16 |
 | 3 | [docs/zcode-spike-summary.md](zcode-spike-summary.md) | spike 实测结论：凭据同步、providerOrder、OpenAI 端点、systemd、私信 |
 | 4 | [zcode/](../zcode) 全部 | 当前实现（36 个文件）：`bin/`、`src/`、`hooks/`、`test/`、`skills/`、`commands/`、`.zcode-plugin/plugin.json`、`.mcp.json` |
-| 5 | [prompts/duty.md](../prompts/duty.md) | 值班章程原文；`zcode/skills/bili-duty/SKILL.md` 是它的副本 |
+| 5 | [prompts/duty.md](../prompts/duty.md) | 值班章程原文；`zcode/skills/bili-duty/SKILL.md` 是 ZCode 的副本（额外带 `duty_comment_append` 说明） |
 
 **后续功能再按需读**（不要一上来全读，太占上下文）：
 
@@ -127,13 +130,27 @@ ssh -i ~/.ssh/<your-key> bili@<ECS_PUBLIC_IP>
 
 ## 5. 已验证结果
 
-- 单测 **20/20 通过**：`cd /home/bili/zcode-dev/zcode && node --test test/*.test.mjs`
+- 单测 **88/88 通过**：`cd /home/bili/zcode-dev/zcode && node --test test/*.test.mjs`；DSH 根包 `node --test test/mcp-client.test.mjs` **2/2**
 - `zcode plugins validate /home/bili/zcode-dev/zcode --json` → `ok: true`
-- MCP `tools/list` → 28 个工具
+- MCP `tools/list` → 29 个工具（Python 19 + 本地 10），包含 `duty_comment_append`
+- MCP 在坏 `config.json` 下仍会返回 `isError: true` 的错误结果（不会让请求悬空）
+- MCP 工具列表启动失败后会在下一次 `tools/list`/未知工具调用时重试；`McpClient` 初始化失败会清掉子进程
+- DSH 根包 MCP 客户端：spawn 失败/初始化前退出后都能再次 `start()`（2/2 测试）
+- `collectTimes` 12 个时点完整保留（不再截断为 8）
+- 调度窗口用 `{pid,at}` 表示运行中、`true` 表示完成；死进程留下的 running 标记会重跑
+- 凭据预检支持 JWT `exp` 和 `user_info.expiresAt/expireTime`；当前服务器凭据没有可读的过期字段
+- PreToolUse 权限矩阵：值班轮搜索/写判重表 allow；转写关闭 deny；私信收件人匹配 allow、不匹配 deny；回复关闭 deny；坏配置值班轮 deny、非值班轮 allow
+- 评论/回复条数：同一 runId 下 `commentPerRound=1` / `replyPerRound=1` 的第二次调用被拒；槽位用 `wx` 原子创建，并发也不能超发
+- 跨午夜补跑：昨天 23:30 未跑会在 00:05 补一次；已成功的窗口不会重复；`state.windows/failures` 保留两天
+- `userConfig` 桥接：显式 `plugins.options` 被 daemon/hook 读取并优先于 `config.json`；`dataDir` 能正确改 home
+- `duty_comment_append` 直接调用测试：rpid 行插到「评论记录」表、`## 看过的视频` 之前
+- 批量私信：本地钩子烟测 `summary → 5 videos` 共 6 条允许、第 7 条拒绝；模拟 `success:false` 后名额退回、重试允许（未调用真实 B 站接口）
+- Python 账本写入 `batch` 字段；无 env 时从 `dm-batch.json` 兜底取 runId，避免 ZCode 不继承环境变量时把一条私信拆成多次通知
+- 2026-11-01 22:40 `bili-duty run --dry-run` → `ok: true`、`code=0`、10.3 秒、usage 8,372 token（验证新 runner 的 stream/close/usage 收尾）
+- 交互式数据目录：`BILI_DUTY_CONFIG_HOME=/home/bili/bili-duty` 下 `bili_status.home` 正确；插件选项 `dataDir` 已写入 `~/.zcode/cli/config.json`（备份同目录 `.bak-*`）
 - `bili_search` 代理成功（真实搜索结果）
 - `duty_paths` / `duty_seen_recent` 正常
 - `bili_cover` 返回 `["text","image"]`，图片块透传成功
-- `bili_run {"dryRun":true}` → 派生进程成功，后台 7.4 秒完成，`ok: true`、provider 正确、sessionId 正常
 - MCP 在 stdin 关闭后优雅退出（exit 0），Python 子进程会被收掉
 - `bili-duty status` / `provider check` / `doctor` 全绿
 
@@ -144,14 +161,15 @@ ssh -i ~/.ssh/<your-key> bili@<ECS_PUBLIC_IP>
 按优先级：
 
 1. ~~**真实一轮**~~：已完成（17:02–17:05），报告/判重/归档正常。
-2. ~~**systemd 调度**~~：已完成并上线（17:35 CST，`enabled` + `active`，PID 55346）；代码为 `bin/daemon.mjs` + `src/scheduler.mjs` + `src/notify.mjs` + `deploy/bili-duty.service`，39 单测通过。
+2. ~~**systemd 调度**~~：已完成并上线（17:35 CST，`enabled` + `active`，PID 55346；全修后 22:40 重启为 PID 102847）；代码为 `bin/daemon.mjs` + `src/scheduler.mjs` + `src/notify.mjs` + `deploy/bili-duty.service`，88 单测通过。
 3. ~~**私信发送**~~：已完成（17:10–17:13）；444 字被 `21007` 拒，338 字成功，回执已记录。
 4. **login / setup 迁移**：把 spike 的 `login_qr.py` 和 uv/venv 安装逻辑搬进 `src/login.mjs` / `src/install.mjs`。
 5. **复核 / 收藏 / 笔记 / 判重滚动**：参考 `lib/verify.mjs`、`lib/favops.py`、`index.js` 对应段。
-6. **build / 部署包**：`build.mjs`、`deploy/bili-duty.service`、`DEPLOY-UBUNTU.md`。
+6. ~~**build / 部署包**~~：已完成 `zcode/build.mjs`（把 `vendor/`、`lib/asr.py`、`lib/favops.py`、`prompts/` 一起打进 `dist/`）；`deploy/bili-duty.service` 已上线。
 7. **上线前**：72h 低频 soak、S7 真实性能、S8 章程质量。
 8. **私信长度**：实测 444 字会被 `21007` 拒；在 prompt/章程里把目标收紧到 ~350 字，减少一次失败重试。
-9. **72h 试点（进行中）**：4 轮/天（08:30/12:30/18:30/22:30）、`fetchPerRound=5`、`perDay=4`、`maxPerRound=1`、推荐流 50 条；20:07 验证轮 342k token / 4 条 / 私信成功。今天 auto 4/4，22:30 跳过；明天 08:30 开始完整 4 轮。看 `usage`、journal、报告质量与 B 站风控，再决定是否扩 12 轮。
+9. **72h 试点（进行中）**：4 轮/天（08:30/12:30/18:30/22:30）、`perDay=20`、`maxPerRound=5`、`roundTarget=3`、`fetchPerRound=10`、推荐流 50 条、私信“1 条总结 + 最多 5 条视频消息”。2026-11-01 22:30 已标记跳过；2026-11-02 08:30 开始按新配置跑。看 `usage`、journal、报告质量与 B 站风控，再决定是否把 `roundTarget` 提到 5。
+10. **全量审查修复**：15 条已全部处理（见 §0）；`userConfig` 通过 `plugins.options` 桥接到 daemon/hook。当前工作树有一大批未提交改动，提交前先跑 §5 的 88 单测与 validate。
 
 ---
 
@@ -168,8 +186,24 @@ ssh -i ~/.ssh/<your-key> bili@<ECS_PUBLIC_IP>
 - **手动轮额度**：`state.manualExtra` 记手动轮多挑的条数；`quota.autoPickedToday` 会减去它，所以手动轮不占自动额度。`prompt.mjs` 和 scheduler 都用这个口径。
 - **立即发送测试**：直接调宿主 MCP 的 `bili_send_message` 会绕过 PreToolUse，也不写 `dm-deliveries`；只用于验证发送链路，正式轮仍走通知窗口。
 - **scheduler 与 runner 的 log 契约**：scheduler 的 `log` 是函数，runner 要的是 logger 对象（`.info/.warn/.error`）。2026-11-01 18:30 就是因为直接传函数导致 `logger.error is not a function`；现在 scheduler 不传 log，runner 也兼容函数/对象。改动 `tick`/`runRound` 时别再打破这个契约。
-- **通知窗口**：`hooks/pre-tool-use.mjs` 对 `bili_send_message` 按 `notifyEveryHours`（默认 4h）/ `quietHours`（默认 23:00–08:00）/ `notifyMaxPerDay`（默认 4）/ `notifyOnlyWhenNew` 收口；`dm-deliveries.jsonl` 的 mtime 就是「上次通知时间」。
+- **配置损坏不再静默回退**：`loadConfig` 对「文件存在但读不了 / 不是 JSON 对象」直接抛错；daemon 启动失败、hook 值班轮拒绝、MCP 返回 `isError`。不要再用 `readJson` 吞配置错误（`state.json` 可以吞，`config.json` 不行）。
+- **runner 只把 stdout 当 stream-json**：stderr 只进 `stderrTail` 和 `stream.jsonl`，不能混进跨块行缓冲；否则 zcode 的日志会把半行 JSON 弄坏。
+- **窗口失败会回滚**：scheduler 在跑之前标记 `windows[key]`，但 `runRound` 返回 `ok:false`/锁冲突时会删掉窗口并记 `state.failures[key]`，2 分钟后重试；不要恢复成“先标记、失败也算跑过”。
+- **锁不按 TTL 抢活进程**：`acquireLock` 只覆盖死 pid；同一进程的重叠由 runner 的 `activeRound` 挡。`run-lock.json` 里 `pid:0` 表示已释放。
+- **交互式 MCP 的 home**：`.mcp.json` 不覆盖 `BILI_DUTY_HOME`；独立会话通过 `BILI_DUTY_CONFIG_HOME`（插件 `dataDir`）指向真实数据目录。服务器已设 `dataDir=/home/bili/bili-duty`；换机器时要改这一项。
+- **userConfig 的优先级**：显式保存在 `~/.zcode/cli/config.json` 的 `plugins.options` 现在会被 daemon/hook 读取，并优先于 `config.json`；未显式改过的字段仍用 `config.json`。若两者都设置了同一字段、又想以 CLI 为准，先在设置页清空该字段。
+- **`config set` 先整组校验再写**：非法 key 不会留下“前几条已保存”的半套配置。
+- **通知窗口**：`hooks/pre-tool-use.mjs` 对 `bili_send_message` 按 `notifyEveryHours`（默认 4h）/ `quietHours`（默认 23:00–08:00）/ `notifyMaxPerDay`（默认 4）/ `notifyOnlyWhenNew` 收口；`dm-deliveries.jsonl` 的 mtime 就是「上次通知时间」。4h 轮次与 4h 窗口留了 5 分钟宽限，避免差几秒误拒。
 - **自动采集开关**：`peakValley=true` 时 daemon 才按 `collectTimes`（默认 12:30 / 20:30）跑；错过时点 60 分钟内会补跑，同一时点用 `state.windows[day@HH:MM]` 去重。
+- **跨午夜补跑**：`state.windows/failures` 保留昨天和今天；00:xx 会检查昨天 23:xx 的窗口，已成功的跳过，未跑过的补一次。不要恢复成日切时清空这两张表。
+- **评论条数硬闸门**：`src/comment-gate.mjs` 按 `runId + 日期` 用 `wx` 原子创建槽位；`commentPerRound` / `replyPerRound` 到上限就拒绝，并发调用也不能超发。槽位在发送前占；`blocked_by: style` 由 PostToolUse 钩子释放，让“改写一次再发”仍能工作。
+- **评论 rpid 记录**：`duty_comment_append(bvid, rpid, root, text)` 把行插进 `seen.md` 的「评论记录」表，位于 `## 看过的视频` 之前；`rpid` 必须是数字，没取到就别编。该工具名只写在 ZCode 的宿主提示里，共享章程保持通用，避免 DSH 调用不存在的工具。
+- **MCP 启动自愈**：`bin/mcp-server.mjs` 启动失败不会把列表永久锁成空；下一次 `tools/list`/未知工具调用会重试。`McpClient` 的 initialize 失败会杀掉子进程并清 `proc`。
+- **窗口标记**：`state.windows[key]` 现在是 `{pid,at}`（运行中）或 `true`（已完成）；daemon 在运行中被杀/重启后，死进程的 running 标记会被当成没跑过，不再丢时点。
+- **collectTimes 不截断**：`normalize` 不再只保留前 8 个时点；12 轮/天可以真的配置 12 个。
+- **凭据过期预检**：`checkCredentials` 会读 JWT `exp` 以及 `user_info` 等 JSON 里的 `expiresAt/expireTime`；当前服务器凭据没有可读的过期字段。
+- **批量私信**：一轮 = 1 条总结 + 最多 `dmBatchMax` 条视频消息；`dm-batch.json` 记 runId/sent/lastAt，后续消息跳过 4h/每日上限但仍查静默时段和 only-new；消息间 3 秒延时；`success:false` 由 PostToolUse 退回名额。
+- **通知计数**：`dm-deliveries.jsonl` 每条带 `batch`，每天按不同 batch 计数，而不是按消息行数；老账本没有 batch 仍按行算。
 - **`bili_run` 是派生进程**：MCP 调用立刻返回 `{started,pid}`；真正的轮次在后台跑，报告/日志在 `out/`、`duty.log`、`runs/`。
 - **Python MCP 白名单**：`BILI_MCP_TOOLS` 名单外的工具不注册，模型连名字都看不到；评论/私信再由 PreToolUse 条件放行。
 - **`seen.md` 由宿主预建**：否则第一轮读判重表会报“不存在”。
@@ -200,7 +234,7 @@ systemctl status bili-duty --no-pager
 journalctl -u bili-duty -n 30 --no-pager
 ```
 
-当前 `peakValley=true`、`collectTimes=12:30,20:30`、`perDay=2`；今天已挑 2 条，所以今天 20:30 不会跑，下一次是明天 12:30。
+当前 `peakValley=true`、`collectTimes=08:30,12:30,18:30,22:30`、`perDay=20`、`maxPerRound=5`、`roundTarget=3`、`fetchPerRound=10`、`dmBatchMax=5`、`notifyEveryHours=4`；2026-11-01 的 22:30 窗口已标记为跳过（避免改配额后补跑），下一次自动轮是 2026-11-02 08:30。
 
 ### 8.2 每天看什么
 
@@ -217,10 +251,10 @@ journalctl -u bili-duty -n 30 --no-pager
 ```text
 你是 zcode-bili-duty MVP 的接手者。先读 docs/zcode-handoff.md，再按里面的顺序读 AGENTS.md、docs/zcode-port-plan.md、docs/zcode-spike-summary.md、zcode/ 全部、prompts/duty.md。
 
-当前状态：核心骨架、Python MCP 工具代理、bili_run/admin_* 已完成；20 个单测、plugins validate、dry-run 都通过；未提交。
-服务器：ssh -i ~/.ssh/<your-key> bili@<ECS_PUBLIC_IP>；数据 /home/bili/bili-duty；开发副本 /home/bili/zcode-dev/zcode。
-约束：只私信、评论默认关、低频（2 次采集/天、4h 通知）；策略闸门不是 OS 沙箱；不读/不打印凭据；不提交除非我要求。
-下一步：先在服务器上跑一轮真实值班（只写报告、不发评论/私信），然后接 systemd 调度和 4h 通知。
+当前状态：核心骨架、Python MCP 工具代理、bili_run/admin_*、systemd、私信与 4h 通知窗口均已完成；全量审查 15 条已全部处理（userConfig 已桥接到 daemon/hook）；88 个单测、plugins validate、dry-run 都通过；工作树未提交。
+服务器：ssh -i ~/.ssh/<your-key> bili@<ECS_PUBLIC_IP>；数据 /home/bili/bili-duty；开发副本 /home/bili/zcode-dev/zcode；daemon PID 102847（2026-11-01 22:40 重启）。
+约束：只私信、评论默认关、低频（4 次采集/天、4h 通知）；策略闸门不是 OS 沙箱；不读/不打印凭据；不提交除非我要求。
+下一步：先看 2026-11-02 08:30 的自动轮与 `usage`，再继续 72h soak；之后迁移 login/setup、复核/收藏。
 ```
 
 ---

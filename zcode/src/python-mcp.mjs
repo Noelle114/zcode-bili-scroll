@@ -20,6 +20,7 @@ export const BILI_MCP_TOOLS = [
   'duty_paths',
   'duty_report_append',
   'duty_seen_append',
+  'duty_comment_append',
   'duty_seen_recent',
   'duty_digest_append',
   'bili_transcribe',

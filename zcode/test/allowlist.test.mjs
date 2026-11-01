@@ -1,11 +1,12 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { decideTool, isDutyRun, shortToolName } from '../src/allowlist.mjs'
+import { decideTool, dmTargetAllowed, isDutyRun, shortToolName } from '../src/allowlist.mjs'
 
 const base = {
   autoComment: false,
   mentionName: '',
   dmMode: 'only',
+  dmUid: 123456,
   dmWatch: false,
   transcribe: false,
 }
@@ -23,17 +24,30 @@ test('duty run blocks shell/file tools and allows B站 reads', () => {
   assert.equal(decideTool({ toolName: 'Read', isDuty: true, config: base }).allow, false)
   assert.equal(decideTool({ toolName: 'bili_search', isDuty: true, config: base }).allow, true)
   assert.equal(decideTool({ toolName: 'duty_report_append', isDuty: true, config: base }).allow, true)
+  assert.equal(decideTool({ toolName: 'duty_comment_append', isDuty: true, config: base }).allow, true)
   assert.equal(decideTool({ toolName: 'bili_transcribe', isDuty: true, config: base }).allow, false)
   assert.equal(decideTool({ toolName: 'bili_transcribe', isDuty: true, config: { ...base, transcribe: true } }).allow, true)
 })
 
 test('comment and DM gates are enforced in both modes', () => {
   assert.equal(decideTool({ toolName: 'bili_reply', isDuty: false, config: base }).allow, false)
-  const commentOn = { ...base, autoComment: true, mentionName: 'me', dmMode: 'both' }
+  const commentOn = { ...base, autoComment: true, mentionName: 'me', dmMode: 'both', commentPerRound: 2 }
   assert.equal(decideTool({ toolName: 'bili_reply', isDuty: true, config: commentOn }).allow, true)
-  assert.equal(decideTool({ toolName: 'bili_send_message', isDuty: true, config: base }).allow, true) // dmMode=only
+  assert.equal(decideTool({ toolName: 'bili_reply', isDuty: true, config: { ...commentOn, commentPerRound: 0 } }).allow, false)
+  assert.equal(decideTool({ toolName: 'bili_reply', isDuty: true, config: commentOn, toolInput: { rpid: 9 } }).allow, false)
+  assert.equal(decideTool({ toolName: 'bili_reply', isDuty: true, config: { ...commentOn, autoComment: false, replyToComments: true }, toolInput: { rpid: 9 } }).allow, true)
+  assert.equal(decideTool({ toolName: 'bili_send_message', isDuty: true, config: base }).allow, true)
   const dmOff = { ...base, dmMode: 'off', dmWatch: false }
   assert.equal(decideTool({ toolName: 'bili_send_message', isDuty: true, config: dmOff }).allow, false)
+  assert.equal(decideTool({ toolName: 'bili_send_message', isDuty: true, config: { ...dmOff, dmWatch: true } }).allow, false)
+  assert.equal(decideTool({ toolName: 'bili_send_message', isDuty: true, config: { ...base, dmUid: 0 } }).allow, false)
+})
+
+test('dmTargetAllowed only accepts the configured dmUid', () => {
+  assert.equal(dmTargetAllowed(base, 123456), true)
+  assert.equal(dmTargetAllowed(base, 999), false)
+  assert.equal(dmTargetAllowed(base, 0), false)
+  assert.equal(dmTargetAllowed({ ...base, dmUid: 0 }, 0), false)
 })
 
 test('non-duty sessions are not restricted except writes', () => {

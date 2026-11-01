@@ -143,7 +143,7 @@ def _ledger_append(text: str, bvid: str, rpid=None):
         p = _ledger_path()
         p.parent.mkdir(parents=True, exist_ok=True)
         with open(p, "a", encoding="utf-8") as f:
-            f.write(f"- {_dt.datetime.now().strftime('%Y-%m-%d %H:%M')} {bvid} rpid={rpid or 0} · {' '.join(str(text).split())}\n")
+            f.write(f"- {_duty_now().strftime('%Y-%m-%d %H:%M')} {bvid} rpid={rpid or 0} · {' '.join(str(text).split())}\n")
     except Exception:
         pass
 
@@ -1176,10 +1176,18 @@ async def bili_send_message(receiver_uid: int, text: str) -> str:
         发送结果
     """
     _deny = _guard("bili_send_message")
-    if _deny: return _deny
+    if _deny:
+        _clear_dm_gate()
+        return _deny
+    # 只允许发给宿主设置的收件人；BILI_DUTY_DM_UID 为空/0 时不额外限制
+    limit_uid = os.environ.get("BILI_DUTY_DM_UID", "").strip()
+    if limit_uid and limit_uid != "0" and str(receiver_uid).strip() != limit_uid:
+        _clear_dm_gate()
+        return json.dumps({"success": False, "error": "收件人不在允许列表（BILI_DUTY_DM_UID）"}, ensure_ascii=False)
     cred = get_cred()
 
     if not text or not text.strip():
+        _clear_dm_gate()
         return json.dumps({"success": False, "error": "text 不能为空"}, ensure_ascii=False)
 
     try:
@@ -1212,12 +1220,24 @@ async def bili_send_message(receiver_uid: int, text: str) -> str:
         duty_day = os.environ.get("BILI_DUTY_RUN_DAY", "")
         if re.fullmatch(r"\d{4}-\d{2}-\d{2}", duty_day):
             bvids = sorted(set(re.findall(r"(?<![0-9A-Za-z])BV[0-9A-Za-z]{10}(?![0-9A-Za-z])", text)))
-            if bvids:
+            record = {"day": duty_day, "bvids": bvids}
+            batch = os.environ.get("BILI_DUTY_DM_BATCH", "").strip()
+            if not batch:
+                # 兜底：PreToolUse 已经把本轮 batch 写进家目录；不依赖 env 是否被 ZCode 继承
                 try:
-                    with (Path(__file__).parent / "dm-deliveries.jsonl").open("a", encoding="utf-8") as f:
-                        f.write(json.dumps({"day": duty_day, "bvids": bvids}, ensure_ascii=False) + "\n")
-                except OSError as e:
-                    print(f"私信已成功，但记录投递失败：{e}", file=sys.stderr)
+                    _b = json.loads((DUTY_HOME / "dm-batch.json").read_text(encoding="utf-8"))
+                    _day = _dt.date.fromisoformat(str(_b.get("day", "")))
+                    if (_b.get("batchId") or _b.get("runId")) and _day == _duty_now().date():
+                        batch = str(_b.get("batchId") or _b.get("runId"))
+                except Exception:
+                    batch = ""
+            if batch:
+                record["batch"] = batch
+            try:
+                with (Path(__file__).parent / "dm-deliveries.jsonl").open("a", encoding="utf-8") as f:
+                    f.write(json.dumps(record, ensure_ascii=False) + "\n")
+            except OSError as e:
+                print(f"私信已成功，但记录投递失败：{e}", file=sys.stderr)
         return json.dumps({
             "success": True,
             "message": f"私信已投递（回执 {str(msg_key)[:12]}…）",
@@ -1225,6 +1245,8 @@ async def bili_send_message(receiver_uid: int, text: str) -> str:
         }, ensure_ascii=False)
     except Exception as e:
         return json.dumps({"success": False, "error": str(e)}, ensure_ascii=False)
+    finally:
+        _clear_dm_gate()
 
 
 # ========== Tool 22: 未读消息 ==========
@@ -1297,8 +1319,28 @@ import datetime as _dt
 DUTY_HOME = Path(os.environ.get("BILI_DUTY_HOME") or (Path.home() / ".dsh" / "bili-duty"))
 
 
+def _clear_dm_gate():
+    """私信发送结束（成功/失败）就放开发送位，让 21007 的精简重试不被自己挡住。"""
+    try:
+        (DUTY_HOME / "dm-gate.lock").unlink()
+    except OSError:
+        pass
+
+
+def _duty_now():
+    """优先用 BILI_DUTY_TZ（Asia/Shanghai）；没有就退回进程本地时区。"""
+    tz_name = os.environ.get("BILI_DUTY_TZ", "").strip()
+    if tz_name:
+        try:
+            from zoneinfo import ZoneInfo
+            return _dt.datetime.now(ZoneInfo(tz_name))
+        except Exception:
+            pass
+    return _dt.datetime.now()
+
+
 def _duty_today() -> str:
-    return _dt.datetime.now().strftime("%Y-%m-%d")
+    return _duty_now().strftime("%Y-%m-%d")
 
 
 _DUTY_DATE_RE = re.compile(r"^(?:(\d{4})[-/.])?(\d{1,2})[-/.](\d{1,2})(?:[ T]\d{1,2}:\d{2}(?::\d{2})?)?$")
@@ -1307,7 +1349,7 @@ _DUTY_DATE_RE = re.compile(r"^(?:(\d{4})[-/.])?(\d{1,2})[-/.](\d{1,2})(?:[ T]\d{
 def _duty_norm_date(raw: str) -> str:
     """模型给的日期 → YYYY-MM-DD；认不出来就用今天（#133：以前 `10-23` 原样写进判重表，宿主解析不了）。
     没写年份按今年补，补出来比今天晚就算去年 —— 跟宿主 lib/state.mjs 的 seenDay 同一套规则。"""
-    today = _dt.date.today()
+    today = _duty_now().date()
     m = _DUTY_DATE_RE.match(str(raw or "").strip())
     if not m:
         return today.isoformat()
@@ -1346,7 +1388,7 @@ def duty_paths() -> str:
         "home": str(DUTY_HOME),
         "report": str(DUTY_HOME / "out" / (_duty_today() + ".md")),
         "seen": str(DUTY_HOME / "seen.md"),
-        "digest": str(DUTY_HOME / "digest" / (_dt.datetime.now().strftime("%Y-%m") + ".md")),
+        "digest": str(DUTY_HOME / "digest" / (_duty_now().strftime("%Y-%m") + ".md")),
     }
     return json.dumps(out, ensure_ascii=False)
 
@@ -1397,6 +1439,47 @@ def duty_seen_append(bvid: str, title: str, up: str, status: str, date: str = ""
 
 
 @tool()
+def duty_comment_append(bvid: str, rpid: str, root: str = "", text: str = "", time: str = "") -> str:
+    """
+    把一条已发评论记进判重表的「评论记录」表（BV | rpid | root | 时间 | 正文前 20 字）。
+
+    Args:
+        bvid: 视频 BV 号
+        rpid: bili_reply 返回的评论 rpid（必填；没取到就不要编）
+        root: 楼中楼回复时的根评论 rpid（一级评论留空）
+        text: 评论正文（只取前 20 字）
+        time: 发送时间（留空=现在）
+
+    Returns:
+        写到了哪个文件
+    """
+    bv = str(bvid or "").strip()
+    rp = str(rpid or "").strip()
+    ro = str(root or "").strip()
+    if not re.fullmatch(r"BV[0-9A-Za-z]{10}", bv):
+        return "没写：bvid 不是 10 位 BV 号"
+    if not re.fullmatch(r"\d+", rp):
+        return "没写：rpid 要是 bili_reply 返回的数字（没取到就别编）"
+    if ro and not re.fullmatch(r"\d+", ro):
+        return "没写：root 要是数字或留空"
+    when = str(time or "").strip() or _duty_now().strftime("%Y-%m-%d %H:%M")
+    row = f"| {_cell(bv, 16)} | {_cell(rp, 24)} | {_cell(ro, 24)} | {_cell(when, 20)} | {_cell(text, 20)} |\n"
+    p = DUTY_HOME / "seen.md"
+    try:
+        body = p.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        body = ""
+    marker = "## 看过的视频"
+    if marker in body:
+        idx = body.index(marker)
+        head = body[:idx].rstrip()
+        tail = body[idx:]
+        p.write_text(head + "\n" + row + "\n" + tail, encoding="utf-8")
+        return "已追加到 " + str(p)
+    return "已追加到 " + _append(p, row)
+
+
+@tool()
 def duty_seen_recent(limit: int = 40, bvid: str = "") -> str:
     """
     读判重表的最近若干行（只读，只读插件自己那份 seen.md）。
@@ -1440,7 +1523,7 @@ def duty_digest_append(text: str) -> str:
     body = str(text or "").replace("\r\n", "\n").strip()
     if not body:
         return "没写：内容是空的"
-    p = DUTY_HOME / "digest" / (_dt.datetime.now().strftime("%Y-%m") + ".md")
+    p = DUTY_HOME / "digest" / (_duty_now().strftime("%Y-%m") + ".md")
     return "已追加到 " + _append(p, body + "\n")
 
 
@@ -1467,6 +1550,8 @@ _TRANSCRIBE_KEEP = 8           # 只留最近 8 个 job 的结果，避免内存
 
 def _transcribe_paths(bv: str):
     """返回 (python, script, out_path)；缺东西时返回 (None, 原因, None)"""
+    if not re.fullmatch(r"BV[0-9A-Za-z]{10}", str(bv or "").strip()):
+        return None, "参数不对：bvid 要是 10 位 BV 号", None
     py_candidates = [
         DUTY_HOME / ".venv-asr" / "Scripts" / "python.exe",
         DUTY_HOME / ".venv-asr" / "bin" / "python",
@@ -2009,7 +2094,7 @@ async def bili_recommend(ps: int = 20) -> str:
 
     # ⭐ 2026-11-01 实测：homepage.get_videos 单次固定回 30 条，且连续两次 0 重叠。
     #    要 50 条就拉两次（最多三次）并按 bvid 去重；ps<=30 的行为与以前一致。
-    for attempt in range(3 if want > 30 else 1):
+    for attempt in range(3 if want > 30 else 2):
         try:
             data = await homepage.get_videos(credential=cred)
         except Exception as e:  # noqa: BLE001 - 统一收成 ok:false，别把原始异常甩给模型
@@ -2060,12 +2145,16 @@ async def bili_recommend(ps: int = 20) -> str:
         detail = f"：{last_error}" if last_error is not None else ""
         return json.dumps({"ok": False, "error": f"取推荐流失败{detail}"}, ensure_ascii=False)
 
-    return json.dumps({
+    out = {
         "ok": True,
         "source": "recommend",
         "count": len(videos),
         "videos": videos,
-    }, ensure_ascii=False)
+    }
+    if len(videos) < want and last_error is not None:
+        out["partial"] = True
+        out["error"] = f"只拿到 {len(videos)}/{want} 条：{last_error}"
+    return json.dumps(out, ensure_ascii=False)
 
 
 # ========== 启动 ==========

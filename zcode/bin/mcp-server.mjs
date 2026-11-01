@@ -29,13 +29,29 @@ function sanitizePythonTool(tool) {
 
 let pythonTools = []
 let pythonError = ''
-try {
-  pythonTools = (await py.listTools()).map(sanitizePythonTool)
-  log.info(`Python MCP 工具 ${pythonTools.length} 个`)
-} catch (error) {
-  pythonError = String(error?.message ?? error)
-  log.error(`Python MCP 起不来：${pythonError}`)
+let pythonLoading = null
+
+/** 启动失败后下一次 tools/list 或未知工具调用会重新试，而不是把整个会话锁死 */
+async function refreshPythonTools() {
+  if (pythonLoading) return pythonLoading
+  pythonLoading = (async () => {
+    try {
+      pythonTools = (await py.listTools()).map(sanitizePythonTool)
+      pythonError = ''
+      log.info(`Python MCP 工具 ${pythonTools.length} 个`)
+    } catch (error) {
+      pythonTools = []
+      pythonError = String(error?.message ?? error)
+      log.error(`Python MCP 起不来：${pythonError}`)
+    } finally {
+      pythonLoading = null
+    }
+    return pythonTools
+  })()
+  return pythonLoading
 }
+
+await refreshPythonTools()
 
 const localTools = [
   {
@@ -45,7 +61,7 @@ const localTools = [
   },
   ...adminToolSpecs,
 ]
-const allTools = [...pythonTools, ...localTools]
+const toolList = () => [...pythonTools, ...localTools]
 
 function textResult(value, isError = false) {
   return {
@@ -56,7 +72,12 @@ function textResult(value, isError = false) {
 
 async function callTool(name, args = {}) {
   const config = loadConfig(paths)
-  if (name === 'bili_status') return textResult(buildStatus(paths, config))
+  if (name === 'bili_status') {
+    return textResult({
+      ...buildStatus(paths, config),
+      ...(pythonError ? { pythonMcpError: pythonError } : {}),
+    })
+  }
   if (name === 'bili_run' || name.startsWith('admin_')) {
     try {
       return textResult(await handleAdminTool(name, args, { paths, config, log }))
@@ -64,8 +85,17 @@ async function callTool(name, args = {}) {
       return textResult({ ok: false, error: String(error?.message ?? error) }, true)
     }
   }
-  const known = pythonTools.find((tool) => tool.name === name)
-  if (!known) return textResult({ ok: false, error: `不认识的工具：${name}` }, true)
+  let known = pythonTools.find((tool) => tool.name === name)
+  if (!known && (!pythonTools.length || pythonError)) {
+    await refreshPythonTools()
+    known = pythonTools.find((tool) => tool.name === name)
+  }
+  if (!known) {
+    return textResult({
+      ok: false,
+      error: pythonError ? `Python MCP 不可用：${pythonError}` : `不认识的工具：${name}`,
+    }, true)
+  }
   try {
     const { json, images } = await py.callRaw(name, args, { timeoutMs: 180000 })
     const content = [{ type: 'text', text: typeof json === 'string' ? json : JSON.stringify(json) }]
@@ -89,7 +119,10 @@ let closing = false
 const maybeExit = () => {
   if (closing && pending === 0) {
     py.stop()
-    process.exit(0)
+    // 不要 process.exit(0)：stdout 还可能有最后一条响应没刷完；让事件循环自己排空
+    process.exitCode = 0
+    const t = setTimeout(() => process.exit(0), 50)
+    t.unref?.()
   }
 }
 
@@ -115,12 +148,18 @@ rl.on('line', async (line) => {
     if (method === 'notifications/initialized') return
     if (method === 'ping') { send({ jsonrpc: '2.0', id, result: {} }); return }
     if (method === 'tools/list') {
-      send({ jsonrpc: '2.0', id, result: { tools: allTools } })
+      if (!pythonTools.length) await refreshPythonTools()
+      send({ jsonrpc: '2.0', id, result: { tools: toolList() } })
       return
     }
     if (method === 'tools/call') {
-      const result = await callTool(params?.name, params?.arguments || {})
-      send({ jsonrpc: '2.0', id, result })
+      try {
+        const result = await callTool(params?.name, params?.arguments || {})
+        send({ jsonrpc: '2.0', id, result })
+      } catch (error) {
+        // 严格读配置后会抛错；必须回一条错误结果，不能让 MCP 请求悬空
+        send({ jsonrpc: '2.0', id, result: textResult({ ok: false, error: String(error?.message ?? error) }, true) })
+      }
       return
     }
     if (id !== undefined) {

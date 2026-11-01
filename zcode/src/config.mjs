@@ -1,4 +1,5 @@
-import { readJson, writeJson } from './util.mjs'
+import { readJsonStrict, writeJson } from './util.mjs'
+import { readPluginOptions } from './plugin-options.mjs'
 
 /**
  * 配置只在 config.mjs 里读写。
@@ -10,6 +11,8 @@ export const DEFAULTS = {
   // 每天/每轮
   perDay: 5,
   maxPerRound: 1,
+  roundTarget: 0,
+  dmBatchMax: 5,
   peakValley: false,
   noon: true,
   night: true,
@@ -102,7 +105,7 @@ const HHMM = /^([01]?\d|2[0-3]):[0-5]\d$/
 
 function times(value, def) {
   const arr = list(value, def).filter((x) => HHMM.test(x))
-  return arr.length ? arr.slice(0, 8) : def
+  return arr.length ? arr : def
 }
 
 export function normalize(raw = {}, paths = null) {
@@ -110,6 +113,8 @@ export function normalize(raw = {}, paths = null) {
   const out = {
     perDay: num(raw.perDay, d.perDay, 0, 50, true),
     maxPerRound: num(raw.maxPerRound, d.maxPerRound, 1, 10, true),
+    roundTarget: num(raw.roundTarget, d.roundTarget, 0, 10, true),
+    dmBatchMax: num(raw.dmBatchMax, d.dmBatchMax, 0, 10, true),
     peakValley: bool(raw.peakValley, d.peakValley),
     noon: bool(raw.noon, d.noon),
     night: bool(raw.night, d.night),
@@ -179,9 +184,29 @@ function envPatch(env) {
   return patch
 }
 
+/**
+ * ZCode 设置页显式保存过的插件选项（plugins.options）。
+ * 只取用户真的改过的字段；manifest 默认值不会走到这里，避免默认值反向覆盖 config.json。
+ */
+function pluginPatch(options) {
+  const patch = {}
+  for (const key of ['perDay', 'peakValley', 'mentionName', 'dmMode', 'personaPrompt', 'reportLevel', 'autoComment', 'transcribe']) {
+    if (options[key] !== undefined) patch[key] = options[key]
+  }
+  if (options.keywordsText !== undefined) {
+    const kws = list(options.keywordsText, [])
+    if (kws.length) patch.keywords = kws
+  }
+  return patch
+}
+
 export function loadConfig(paths, env = process.env) {
-  const saved = readJson(paths.config, {})
-  const merged = { ...DEFAULTS, ...envPatch(env), ...(saved && typeof saved === 'object' ? saved : {}) }
+  // 配置不可读/损坏时不要静默回退 DEFAULTS：daemon 会按错误配置跑，saveConfig 还会覆盖原文件
+  const parsed = readJsonStrict(paths.config)
+  const saved = parsed.exists ? parsed.value : {}
+  const plugin = pluginPatch(readPluginOptions(paths.pluginRoot, { env }))
+  // 显式插件选项 > config.json > env > 默认值：设置页与 daemon/hook 共用一套生效值
+  const merged = { ...DEFAULTS, ...envPatch(env), ...saved, ...plugin }
   return normalize(merged, paths)
 }
 

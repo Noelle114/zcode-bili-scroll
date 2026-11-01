@@ -29,34 +29,53 @@ export class McpClient {
   get running() { return Boolean(this.proc) }
 
   async start() {
-    if (this.proc) return
+    // 先看正在初始化的那次：this.proc 在 initialize 完成前就已经设上了，
+    // 如果先判断 proc，并发调用会跳过 initialize 直接发 tools/call。
     if (this.starting) return this.starting
+    if (this.proc) return
     this.starting = (async () => {
       const { command, args, cwd, env, log } = this.cfg
-      this.proc = spawn(command, args, {
+      const child = spawn(command, args, {
         cwd,
         env: { ...process.env, ...(env || {}) },
         stdio: ['pipe', 'pipe', 'pipe'],
         windowsHide: true,
       })
-      this.proc.stdout.setEncoding('utf8')
-      this.proc.stdout.on('data', (chunk) => this.#onData(chunk))
-      this.proc.stderr.setEncoding('utf8')
-      this.proc.stderr.on('data', (c) => { this.stderr = (this.stderr + c).slice(-4000) })
-      this.proc.on('error', (e) => log(`MCP 子进程启动失败：${e?.message ?? e}`))
-      this.proc.on('exit', (code) => {
+      this.proc = child
+      child.stdout.setEncoding('utf8')
+      child.stdout.on('data', (chunk) => this.#onData(chunk))
+      child.stderr.setEncoding('utf8')
+      child.stderr.on('data', (c) => { this.stderr = (this.stderr + c).slice(-4000) })
+      child.on('error', (e) => {
+        log(`MCP 子进程启动失败：${e?.message ?? e}`)
+        // spawn ENOENT/EACCES 只发 error、不保证发 exit；不清掉 proc 就永远 running，无法重建
+        if (this.proc === child) this.proc = null
+        for (const [, p] of this.pending) p.reject(new Error(`MCP 子进程启动失败：${e?.message ?? e}`))
+        this.pending.clear()
+      })
+      child.on('exit', (code) => {
         log(`MCP 子进程退出（code=${code}）`)
         for (const [, p] of this.pending) p.reject(new Error(`MCP 子进程退出（code=${code}）${this.stderr ? '：' + this.stderr.slice(-300) : ''}`))
         this.pending.clear()
-        this.proc = null
+        if (this.proc === child) this.proc = null
       })
-      await this.#request('initialize', {
-        protocolVersion: '2024-11-05',
-        capabilities: {},
-        clientInfo: { name: PKG.name || 'dsh-bili-scroll', version: PKG.version || '0.0.0' },
-      })
-      this.#notify('notifications/initialized', {})
-      log('MCP 已就绪')
+      try {
+        await this.#request('initialize', {
+          protocolVersion: '2024-11-05',
+          capabilities: {},
+          clientInfo: { name: PKG.name || 'dsh-bili-scroll', version: PKG.version || '0.0.0' },
+        })
+        this.#notify('notifications/initialized', {})
+        log('MCP 已就绪')
+      } catch (error) {
+        // initialize 超时/失败也把子进程收掉，下一次 start 才能重新初始化
+        if (this.proc === child) {
+          try { child.kill() } catch { /* 已经没了 */ }
+          this.proc = null
+        }
+        this.buf = ''
+        throw error
+      }
     })()
     try { await this.starting } finally { this.starting = null }
   }
@@ -64,6 +83,7 @@ export class McpClient {
   stop() {
     try { this.proc?.kill() } catch { /* 已经没了 */ }
     this.proc = null
+    this.buf = ''
   }
 
   /** 调一个 MCP 工具：能解析成 JSON 就返回对象，否则返回字符串 */

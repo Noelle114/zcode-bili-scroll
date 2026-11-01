@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -56,9 +56,31 @@ test('maxPerRound clamps to 1..10', () => {
   const { paths, cleanup } = sandbox()
   try {
     assert.equal(loadConfig(paths, {}).maxPerRound, 1)
+    assert.equal(loadConfig(paths, {}).roundTarget, 0)
+    assert.equal(loadConfig(paths, {}).dmBatchMax, 5)
     assert.equal(setConfigValue(paths, 'maxPerRound', '5').maxPerRound, 5)
+    assert.equal(setConfigValue(paths, 'roundTarget', '3').roundTarget, 3)
+    assert.equal(setConfigValue(paths, 'dmBatchMax', '5').dmBatchMax, 5)
     assert.equal(setConfigValue(paths, 'maxPerRound', '0').maxPerRound, 1)
     assert.equal(setConfigValue(paths, 'maxPerRound', '99').maxPerRound, 10)
+  } finally { cleanup() }
+})
+
+test('collectTimes does not silently drop entries after eight', () => {
+  const { paths, cleanup } = sandbox()
+  try {
+    const times = ['08:30', '10:00', '12:30', '14:00', '16:00', '18:30', '20:00', '22:30', '23:00', '23:15', '23:30', '23:45']
+    assert.equal(setConfigValue(paths, 'collectTimes', times.join(',')).collectTimes.length, times.length)
+  } finally { cleanup() }
+})
+
+test('malformed config throws instead of silently using defaults', () => {
+  const { paths, cleanup } = sandbox()
+  try {
+    writeFileSync(paths.config, '{bad json', 'utf8')
+    assert.throws(() => loadConfig(paths), /解析/)
+    assert.throws(() => saveConfig(paths, { perDay: 7 }), /解析/)
+    assert.equal(readFileSync(paths.config, 'utf8'), '{bad json')
   } finally { cleanup() }
 })
 

@@ -10,6 +10,7 @@
   "commands": "commands",
   "mcpServers": ".mcp.json",
   "userConfig": {
+    "dataDir": { "title": "数据目录（服务器填 /home/bili/bili-duty）", "description": "交互式 MCP 读取的配置/凭证/报告目录；值班轮仍以 runner 注入的 BILI_DUTY_HOME 为准", "type": "directory", "default": "" },
     "perDay": { "title": "每天最多挑几条", "type": "number", "default": 5 },
     "peakValley": { "title": "谷时自动刷", "type": "boolean", "default": false },
     "mentionName": { "title": "要 @ 谁（B站昵称）", "type": "string", "default": "" },

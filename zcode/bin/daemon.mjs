@@ -7,11 +7,18 @@ import { createPaths, ensureHome } from '../src/paths.mjs'
 import { loadConfig } from '../src/config.mjs'
 import { createLogger } from '../src/log.mjs'
 import { tick } from '../src/scheduler.mjs'
+import { stopRound } from '../src/runner.mjs'
 
 const paths = createPaths()
 ensureHome(paths)
 const log = createLogger(paths, { alsoConsole: true })
-const first = loadConfig(paths)
+let first
+try {
+  first = loadConfig(paths)
+} catch (error) {
+  log.error(`配置读取失败，daemon 不启动：${String(error?.message ?? error)}`)
+  process.exit(1)
+}
 
 log.info(`daemon start home=${paths.home} tz=${first.timeZone} peakValley=${first.peakValley} collectTimes=${(first.collectTimes || []).join(',')} notifyEveryHours=${first.notifyEveryHours}`)
 if (first.dmWatch) log.warn('dmWatch=true：本轮 MVP 只做发送，私信监听循环尚未接入')
@@ -21,7 +28,10 @@ function stop(signal) {
   if (stopping) return
   stopping = true
   log.info(`daemon stop（${signal}）`)
-  process.exit(0)
+  stopRound()
+  // 给正跑的一轮一点时间走 finally（释放锁）；systemd 的 control-group 也会兜底
+  const t = setTimeout(() => process.exit(0), 1000)
+  t.unref?.()
 }
 process.on('SIGTERM', () => stop('SIGTERM'))
 process.on('SIGINT', () => stop('SIGINT'))

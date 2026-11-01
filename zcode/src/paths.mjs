@@ -2,19 +2,27 @@ import { existsSync, mkdirSync, chmodSync, writeFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { homedir } from 'node:os'
 import { fileURLToPath } from 'node:url'
+import { readPluginOptions } from './plugin-options.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const DEFAULT_PLUGIN_ROOT = resolve(HERE, '..')
 
 /**
  * 路径解析：只在这里拼数据目录/插件目录，其他模块一律用它。
- * 数据目录优先级：opts.home > BILI_DUTY_HOME > ZCODE_PLUGIN_DATA > ~/.bili-duty
+ * 数据目录优先级：opts.home > BILI_DUTY_HOME > BILI_DUTY_CONFIG_HOME > 插件 options.dataDir > ZCODE_PLUGIN_DATA > ~/.bili-duty
+ * BILI_DUTY_CONFIG_HOME 是插件 userConfig 的 dataDir，只给交互式 MCP 兜底；
+ * 插件 options.dataDir 让 daemon/hook 也能读到 ZCode 设置页保存的数据目录；
+ * 值班轮的 BILI_DUTY_HOME 由 runner 显式注入，优先级更高。
  */
 export function createPaths(opts = {}) {
-  const pluginRoot = opts.pluginRoot || process.env.BILI_DUTY_PLUGIN_ROOT || DEFAULT_PLUGIN_ROOT
+  const env = opts.env || process.env
+  const pluginRoot = opts.pluginRoot || env.BILI_DUTY_PLUGIN_ROOT || DEFAULT_PLUGIN_ROOT
+  const optionHome = String(readPluginOptions(pluginRoot, { env }).dataDir || '').trim()
   const home = opts.home
-    || process.env.BILI_DUTY_HOME
-    || process.env.ZCODE_PLUGIN_DATA
+    || env.BILI_DUTY_HOME
+    || env.BILI_DUTY_CONFIG_HOME
+    || optionHome
+    || env.ZCODE_PLUGIN_DATA
     || join(homedir(), '.bili-duty')
 
   const p = {
@@ -43,6 +51,9 @@ export function createPaths(opts = {}) {
     bin: join(home, 'bin'),
     qrPng: join(home, 'qrcode_login.png'),
     dmDeliveries: join(home, 'dm-deliveries.jsonl'),
+    dmGate: join(home, 'dm-gate.lock'),
+    dmBatch: join(home, 'dm-batch.json'),
+    commentSlots: join(home, 'comment-slots'),
   }
 
   const isWin = process.platform === 'win32'
@@ -63,7 +74,7 @@ export function createPaths(opts = {}) {
   p.favopsScript = join(p.libDir, 'favops.py')
 
   p.defaultProviderFile = join(p.providersDir, 'provider.recommended.json')
-  p.defaultCredentialsFile = join(process.env.HOME || homedir(), '.zcode', 'v2', 'credentials.json')
+  p.defaultCredentialsFile = join(env.HOME || homedir(), '.zcode', 'v2', 'credentials.json')
 
   return p
 }

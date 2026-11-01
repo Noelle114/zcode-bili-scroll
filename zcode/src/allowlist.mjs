@@ -19,6 +19,7 @@ export const DUTY_WRITE_TOOLS = new Set([
   'duty_paths',
   'duty_report_append',
   'duty_seen_append',
+  'duty_comment_append',
   'duty_seen_recent',
   'duty_digest_append',
 ])
@@ -49,29 +50,42 @@ export function isDutyRun({ cwd, workspace, env = process.env } = {}) {
   return normPath(cwd) === normPath(workspace)
 }
 
-export function commentAllowed(config) {
-  return Boolean(config?.autoComment && String(config?.mentionName || '').trim() && String(config?.dmMode || '') !== 'only')
+export function commentAllowed(config, toolInput = {}) {
+  const mention = String(config?.mentionName || '').trim()
+  if (!mention || String(config?.dmMode || '') === 'only') return false
+  const rpid = Number(toolInput?.rpid) || 0
+  if (rpid > 0) {
+    return Boolean(config?.replyToComments && (Number(config?.replyPerRound) || 1) > 0)
+  }
+  return Boolean(config?.autoComment && (Number(config?.commentPerRound) || 0) > 0)
 }
 
 export function dmAllowed(config) {
-  return Boolean(String(config?.dmMode || 'off') !== 'off' || config?.dmWatch)
+  return Boolean(String(config?.dmMode || 'off') !== 'off' && Number(config?.dmUid) > 0)
+}
+
+/** 私信只能发给设置里的 dmUid；receiver_uid 缺失/不匹配/未配置都拒绝 */
+export function dmTargetAllowed(config, receiverUid) {
+  const want = Number(config?.dmUid) || 0
+  const got = Number(receiverUid) || 0
+  return want > 0 && got === want
 }
 
 /**
  * @returns {{allow: boolean, reason: string}}
  */
-export function decideTool({ toolName, isDuty, config }) {
+export function decideTool({ toolName, isDuty, config, toolInput = {} }) {
   const name = shortToolName(toolName)
 
   if (name === 'bili_reply') {
-    return commentAllowed(config)
-      ? { allow: true, reason: '评论已开启且填了 @ 谁' }
-      : { allow: false, reason: '评论未开启（需要 autoComment + mentionName，且 dmMode 不是 only）' }
+    return commentAllowed(config, toolInput)
+      ? { allow: true, reason: '评论/回复已开启且填了 @ 谁' }
+      : { allow: false, reason: '评论/回复未开启（检查 autoComment / replyToComments / mentionName / dmMode）' }
   }
   if (name === 'bili_send_message') {
     return dmAllowed(config)
       ? { allow: true, reason: '私信投递已开启' }
-      : { allow: false, reason: '私信未开启（dmMode=off 且 dmWatch=false）' }
+      : { allow: false, reason: '私信未开启（需要 dmMode 不是 off 且填了 dmUid）' }
   }
 
   // 非值班轮：不干扰用户自己的 ZCode 使用，只拦评论/私信两条写操作

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { createPaths, ensureHome } from '../src/paths.mjs'
-import { DEFAULTS, loadConfig, setConfigValue } from '../src/config.mjs'
+import { DEFAULTS, loadConfig, parseConfigValue, saveConfig } from '../src/config.mjs'
 import { createLogger } from '../src/log.mjs'
 import { syncCredentials } from '../src/credentials.mjs'
 import { loadProvider } from '../src/provider.mjs'
@@ -12,7 +12,13 @@ const args = process.argv.slice(2)
 const cmd = args.shift() || 'status'
 const paths = createPaths()
 ensureHome(paths)
-const config = loadConfig(paths)
+let config
+try {
+  config = loadConfig(paths)
+} catch (error) {
+  console.error(JSON.stringify({ ok: false, error: String(error?.message ?? error) }, null, 2))
+  process.exit(1)
+}
 const log = createLogger(paths)
 
 function print(value) {
@@ -32,13 +38,15 @@ async function main() {
       }
       if (sub === 'set') {
         if (!args.length) throw new Error('用法：bili-duty config set key=value [...]')
-        let next = config
+        // 先把整组校验完再写，避免第二条非法时第一条已经落盘
+        const patch = {}
         for (const pair of args) {
           const idx = pair.indexOf('=')
           if (idx < 0) throw new Error(`参数要写成 key=value：${pair}`)
-          next = setConfigValue(paths, pair.slice(0, idx), pair.slice(idx + 1))
+          const key = pair.slice(0, idx)
+          patch[key] = parseConfigValue(key, pair.slice(idx + 1))
         }
-        return print({ ok: true, config: next })
+        return print({ ok: true, config: saveConfig(paths, patch) })
       }
       if (sub === 'keys') return print(Object.keys(DEFAULTS))
       throw new Error('用法：bili-duty config get|set|keys')

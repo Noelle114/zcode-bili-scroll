@@ -8,6 +8,21 @@
   "engines": {
     "node": ">=22"
   },
+  "files": [
+    ".zcode-plugin",
+    ".mcp.json",
+    "bin",
+    "src",
+    "hooks",
+    "commands",
+    "skills",
+    "deploy",
+    "ui",
+    "vendor",
+    "lib",
+    "prompts",
+    "README.md"
+  ],
   "scripts": {
     "test": "node --test test",
     "build": "node build.mjs"
