@@ -16,10 +16,13 @@
 - **systemd 已安装并运行**（17:35:11 CST，`enabled` + `active`，PID 55346）。
 - **72 小时试点已启动**：`collectTimes=08:30,12:30,18:30,22:30`、`perDay=4`、`fetchPerRound=5`、推荐流 `ps=50`；首轮手动测试于 17:51 启动。目标：观察 token 和 B 站风控，再决定是否扩到 12 轮。
 - **试点首轮结果**（17:51–17:55）：215 秒、**242,365 token**（7 次请求，cache 184,896）、挑 2 条（`BV1bpxe61EU6` / `BV186pc65E68`）、读 3 条字幕 + 2 次画面、无 B 站错误。私信被 4 小时窗口挡下（17:13 的测试私信）；测试账本已存档为 `dm-deliveries.test-20261101-1713.jsonl`，新账本从 0 开始。今天配额 4/4，18:30/22:30 跳过；第一次自动轮是明天 08:30。
-- **token 量级修正**：首轮 5 条细看 + 50 推荐约 **24.2 万 token** ⇒ 4 轮/天约 **100 万/天**，远低于之前 3–6M 的粗估；72h 后再按实际外推（12 轮 × 10 条的量级也会比 18–36M 低很多）。
+- **token 量级修正**：首轮 5 条细看 + 50 推荐约 **24.2 万 token**；20:07 自动轮（5 条细看、挑 4 条）约 **34.2 万 token**。4 轮/天大约 **1–1.4M token/天**，远低于之前 3–6M 的粗估；72h 后再按实际外推（12 轮 × 10 条的量级也会比 18–36M 低很多）。
 - **立即发送测试**（18:01）：宿主直接调 `bili_send_message` 发同一份私信（365 字，回执 `7703140961428716000`）成功；这条走宿主 MCP、不经过模型的 PreToolUse 闸门，也不写 `dm-deliveries`，所以不算通知窗口。
 - **自动额度已恢复**：今天 4 条都是手动轮 ⇒ `state.manualExtra=4`，`autoPicked=0 / left=4`；18:30 的自动轮可以正常跑。手动试点和 dry-run 的 run 目录已归档为 `runs/test-*`，`usage --days=1` 从 0 开始，72h 统计不会被测试污染。
 - **prompt 修正**：`prompt.mjs` 改用 `autoPickedToday` + `manualExtra`，手动轮不再占自动额度（41 单测通过）。
+- **18:30 自动轮失败并修复**：scheduler 把 `log` 函数传给 runner，而 runner 需要 logger 对象 ⇒ `TypeError: logger.error is not a function`，那一轮没有启动、也没有私信。已改成 scheduler 不再传 log + runner 兼容函数/对象，并重启 daemon（PID 63525）。
+- **20:07 自动轮验证成功**：临时时点 20:07 跑了一轮，4 条、342,398 token（9 请求）、私信成功 `msg_key=7703174508620221000`；今天 auto 4/4，22:30 会跳过。`collectTimes` 已恢复为 08:30/12:30/18:30/22:30。
+- **4 轮结构修正**：新增 `maxPerRound=1`。20:07 那轮把 4 条额度一次用光，导致后面 3 轮会全部跳过；加上每轮上限后，明天 08:30/12:30/18:30/22:30 每轮最多挑 1 条，才能跑满 4 轮。明天第一轮的提示词已验证为「今天还剩 4 条，这一轮最多再挑 1 条」。
 - **`bili_recommend(ps=50)`**：首页接口单次只回 30 条，连续两次 0 重叠 ⇒ 工具内部拉两次合并（ps<=30 时仍只拉一次）。runner 已把 provider 汇总的 usage 写进 `result.json`，可用 `bili-duty usage --days=3` 汇总。
 - 修了两个真 bug：MCP structuredContent 协议要求；`isAuthError` 把 stream 的 `seq:1113` 当鉴权失败。
 - 服务器当前状态：插件以 **inline** 方式挂在 `~/.zcode/cli/config.json` 的 `plugins.dirs`；`dmMode=only`、`dmUid=<MAIN_UID>`、`autoComment=false`、`dmWatch=false`。真实 UID 只在服务器配置里。
@@ -147,7 +150,7 @@ ssh -i ~/.ssh/<your-key> bili@<ECS_PUBLIC_IP>
 6. **build / 部署包**：`build.mjs`、`deploy/bili-duty.service`、`DEPLOY-UBUNTU.md`。
 7. **上线前**：72h 低频 soak、S7 真实性能、S8 章程质量。
 8. **私信长度**：实测 444 字会被 `21007` 拒；在 prompt/章程里把目标收紧到 ~350 字，减少一次失败重试。
-9. **72h 试点（进行中）**：4 轮/天（08:30/12:30/18:30/22:30）、`fetchPerRound=5`、`perDay=4`、推荐流 50 条；首轮 242k token/5 reads。今天配额 4/4，第一次自动轮是明天 08:30；看 `usage`、journal、报告质量与 B 站风控，再决定是否扩 12 轮。
+9. **72h 试点（进行中）**：4 轮/天（08:30/12:30/18:30/22:30）、`fetchPerRound=5`、`perDay=4`、`maxPerRound=1`、推荐流 50 条；20:07 验证轮 342k token / 4 条 / 私信成功。今天 auto 4/4，22:30 跳过；明天 08:30 开始完整 4 轮。看 `usage`、journal、报告质量与 B 站风控，再决定是否扩 12 轮。
 
 ---
 
@@ -163,6 +166,7 @@ ssh -i ~/.ssh/<your-key> bili@<ECS_PUBLIC_IP>
 - **token 统计**：runner 从 stream 的 provider 汇总事件取 usage，写进 `runs/<runId>/result.json`；`bili-duty usage --days=3` 汇总最近 N 天（旧 run 没有 usage，会显示 `usage:null`）。
 - **手动轮额度**：`state.manualExtra` 记手动轮多挑的条数；`quota.autoPickedToday` 会减去它，所以手动轮不占自动额度。`prompt.mjs` 和 scheduler 都用这个口径。
 - **立即发送测试**：直接调宿主 MCP 的 `bili_send_message` 会绕过 PreToolUse，也不写 `dm-deliveries`；只用于验证发送链路，正式轮仍走通知窗口。
+- **scheduler 与 runner 的 log 契约**：scheduler 的 `log` 是函数，runner 要的是 logger 对象（`.info/.warn/.error`）。2026-11-01 18:30 就是因为直接传函数导致 `logger.error is not a function`；现在 scheduler 不传 log，runner 也兼容函数/对象。改动 `tick`/`runRound` 时别再打破这个契约。
 - **通知窗口**：`hooks/pre-tool-use.mjs` 对 `bili_send_message` 按 `notifyEveryHours`（默认 4h）/ `quietHours`（默认 23:00–08:00）/ `notifyMaxPerDay`（默认 4）/ `notifyOnlyWhenNew` 收口；`dm-deliveries.jsonl` 的 mtime 就是「上次通知时间」。
 - **自动采集开关**：`peakValley=true` 时 daemon 才按 `collectTimes`（默认 12:30 / 20:30）跑；错过时点 60 分钟内会补跑，同一时点用 `state.windows[day@HH:MM]` 去重。
 - **`bili_run` 是派生进程**：MCP 调用立刻返回 `{started,pid}`；真正的轮次在后台跑，报告/日志在 `out/`、`duty.log`、`runs/`。

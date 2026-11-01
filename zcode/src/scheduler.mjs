@@ -90,6 +90,6 @@ export async function tick(paths, config, { now = new Date(), log = () => {}, dr
   }, { now, tz: config.timeZone })
 
   log(`scheduler: 到点 ${d.time}，开跑`)
-  const result = await runRound(paths, { why: `schedule:${d.time}`, log })
+  const result = await runRound(paths, { why: `schedule:${d.time}` })
   return { ran: true, ...d, result }
 }

@@ -20,7 +20,9 @@ export function buildPrompt(paths, config, { why = 'window', now = new Date() } 
   const already = autoPickedToday(paths, config, now)
   const manualExtra = manualExtraToday(paths, { now, tz })
   const quota = Math.max(0, Number(config.perDay) || 0)
+  const perRound = Math.max(1, Number(config.maxPerRound) || 1)
   const left = Math.max(0, quota - already)
+  const roundCap = Math.min(left, perRound)
   const report = reportFileOf(paths, now, tz)
   const kws = Array.isArray(config.keywords) ? config.keywords.filter(Boolean) : []
   const excludes = Array.isArray(config.excludeWords) ? config.excludeWords.filter(Boolean) : []
@@ -33,8 +35,8 @@ export function buildPrompt(paths, config, { why = 'window', now = new Date() } 
   lines.push(`- 工作目录：${paths.workspace}`)
   lines.push(`- 日报：${report}（**每挑中一条，第一行写成 \`### BV号\`**；漏写会被当成没挑中）`)
   lines.push(manualExtra > 0
-    ? `- 自动额度今天已挑 ${already} 条（手动轮另挑了 ${manualExtra} 条，不占自动额度）；这一轮最多再挑 ${left} 条（全天自动额度 ${quota} 条）`
-    : `- 今天已挑 ${already} 条；这一轮最多再挑 ${left} 条（全天总量 ${quota} 条）`)
+    ? `- 自动额度今天已挑 ${already} 条（手动轮另挑了 ${manualExtra} 条，不占自动额度）；今天自动额度还剩 ${left} 条，这一轮最多再挑 ${roundCap} 条（每轮上限 ${perRound}）`
+    : `- 今天已挑 ${already} 条；今天还剩 ${left} 条，这一轮最多再挑 ${roundCap} 条（每轮上限 ${perRound}）`)
   lines.push(`- 判重表：${paths.seen}`)
   lines.push(`- 本月归档：${join(paths.digestDir, `${today.slice(0, 7)}.md`)}`)
   lines.push(`- 报告形态：${config.reportLevel}`)

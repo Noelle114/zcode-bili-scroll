@@ -52,6 +52,16 @@ test('setConfigValue parses booleans/numbers/arrays', () => {
   } finally { cleanup() }
 })
 
+test('maxPerRound clamps to 1..10', () => {
+  const { paths, cleanup } = sandbox()
+  try {
+    assert.equal(loadConfig(paths, {}).maxPerRound, 1)
+    assert.equal(setConfigValue(paths, 'maxPerRound', '5').maxPerRound, 5)
+    assert.equal(setConfigValue(paths, 'maxPerRound', '0').maxPerRound, 1)
+    assert.equal(setConfigValue(paths, 'maxPerRound', '99').maxPerRound, 10)
+  } finally { cleanup() }
+})
+
 test('provider/credentials defaults point at the data dir and ~/.zcode', () => {
   const { paths, cleanup } = sandbox()
   try {

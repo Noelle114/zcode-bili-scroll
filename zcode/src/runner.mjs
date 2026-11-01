@@ -41,7 +41,10 @@ function findProviderUsage(value) {
  */
 export async function runRound(paths = createPaths(), { why = 'manual', dryRun = false, log } = {}) {
   const config = loadConfig(paths)
-  const logger = log || createLogger(paths, { alsoConsole: true })
+  // scheduler 传的是「日志函数」，CLI 传的是 logger 对象；两种都接住，避免再出 logger.error 不是函数
+  const logger = typeof log === 'function'
+    ? { info: (msg) => log(msg), warn: (msg) => log(msg), error: (msg) => log(msg), rotate: () => {} }
+    : (log || createLogger(paths, { alsoConsole: true }))
   const lock = acquireLock(paths.runLock, { why })
   if (!lock.ok) {
     logger.warn(`这一轮没跑（${why}）：另一个进程正在跑（pid=${lock.lock?.pid}）`)

@@ -9,6 +9,7 @@ import { readJson, writeJson } from './util.mjs'
 export const DEFAULTS = {
   // 每天/每轮
   perDay: 5,
+  maxPerRound: 1,
   peakValley: false,
   noon: true,
   night: true,
@@ -108,6 +109,7 @@ export function normalize(raw = {}, paths = null) {
   const d = DEFAULTS
   const out = {
     perDay: num(raw.perDay, d.perDay, 0, 50, true),
+    maxPerRound: num(raw.maxPerRound, d.maxPerRound, 1, 10, true),
     peakValley: bool(raw.peakValley, d.peakValley),
     noon: bool(raw.noon, d.noon),
     night: bool(raw.night, d.night),
